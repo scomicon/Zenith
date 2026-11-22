@@ -525,32 +525,22 @@ particles = ["firework", "flash", "electric_spark"]
 [[particle_lights]]
 color = [0.42, 0.20, 0.62]
 reach = 2.6
-particles = ["dragon_breath", "end_rod"]
-
-[[particle_lights]]
-color = [0.42, 0.24, 0.09]
-reach = 2.0
-particles = ["flame", "small_flame"]
+particles = ["dragon_breath"]
 
 [[particle_lights]]
 color = [1.0, 0.42, 0.12]
 reach = 2.8
-particles = ["lava", "dripping_lava", "falling_lava", "landing_lava", "dripping_dripstone_lava", "falling_dripstone_lava"]
+particles = ["dripping_lava", "falling_lava", "landing_lava", "dripping_dripstone_lava", "falling_dripstone_lava"]
 
 [[particle_lights]]
 color = [0.16, 0.50, 0.62]
 reach = 2.2
-particles = ["soul_fire_flame", "soul"]
-
-[[particle_lights]]
-color = [0.22, 0.56, 0.36]
-reach = 2.0
-particles = ["copper_fire_flame"]
+particles = ["soul"]
 
 [[particle_lights]]
 color = [0.64, 0.24, 0.88]
 reach = 2.2
-particles = ["portal", "reverse_portal", "dripping_obsidian_tear", "falling_obsidian_tear", "landing_obsidian_tear"]
+particles = ["dripping_obsidian_tear", "falling_obsidian_tear", "landing_obsidian_tear"]
 
 [[particle_lights]]
 color = [0.16, 0.72, 0.82]
@@ -575,12 +565,12 @@ particles = ["firefly"]
 [[particle_lights]]
 color = [0.68, 0.54, 0.24]
 reach = 2.2
-particles = ["totem_of_undying", "vault_connection", "enchant"]
+particles = ["totem_of_undying"]
 
 [[particle_lights]]
 color = [0.32, 0.44, 0.78]
 reach = 2.2
-particles = ["trial_omen", "ominous_spawning", "witch"]
+particles = ["witch"]
 
 # ---------------------------------------------------------------------------
 # User Options (mapped to WGSL overrides and [shadow] sizing)
