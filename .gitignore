@@ -1,0 +1,5 @@
+outputs/
+*.hshader
+.DS_Store
+Thumbs.db
+desktop.ini

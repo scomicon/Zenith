@@ -1,0 +1,1342 @@
+# Zenith - a Horizon shader pack (shader API 0.2, schema 1, MIT license).
+# Written clean-room from published rendering literature; see PROVENANCE.md.
+# `horizon-shader check` validates every file named in this manifest.
+
+schema = 1
+id = "zenith"
+name = "Zenith"
+version = "0.1.0"
+api = "0.2"
+description = "Physically-minded shader pack: shadows, GTAO, volumetric light, bloom, own sky and tone curve."
+license = "MIT"
+shared = ["shared/common.wgsl", "shared/fog.wgsl"]
+
+[frame]
+# Linear blending: glass, water and clouds blend as light does (the stages see the same values either way).
+blend = "linear"
+primaries = "bt709"
+fog = "pack" # Requires 3a6bea5: retain surface detail farther under water.
+
+[budget]
+gpu_ms = 4.0
+
+# ---------------------------------------------------------------- stages (tables merged from manifest-fragments/sky.toml and material.toml)
+
+[sky]
+file = "sky/sky.wgsl"
+clouds = false # Zenith ray-marched layer replaces vanilla clouds.
+sun = false
+stars = false
+# Horizon 0.2: sun = false leaves vanilla's moon enabled (there is no moon key); the analytic lunar
+# disc/halo sits underneath the engine moon and its phases.
+
+[weather]
+file = "weather/weather.wgsl"
+# API 0.2 weather stage lights/fogs engine rain/snow geometry, not world fog.
+
+[tonemap]
+file = "tonemap/tonemap.wgsl"
+
+[material]
+file = "material/material.wgsl"
+reads = ["zp_climate"]
+files = [
+    "material/common_local.wgsl",
+    "material/shadows.wgsl",
+    "material/finishes.wgsl",
+    "material/pbr.wgsl",
+    "material/lighting.wgsl",
+    "material/water.wgsl",
+]
+# Coverage stays the engine's: no stage of this pack calls `discard`, so solid and cutout terrain keep
+# Horizon's alpha test on the texture's alpha and translucent terrain keeps its returned alpha as opacity.
+# Switch to "pack" only if a material starts cutting its own holes (the check refuses `discard` under "engine").
+coverage = "engine"
+
+[entity]
+file = "entity/entity.wgsl"
+# Same rule as [material]: Horizon keeps each entity's coverage (texture alpha x layer opacity, cut below 0.1);
+# entity.wgsl neither discards nor fades entities itself.
+coverage = "engine"
+
+[vertex]
+file = "vertex/vertex.wgsl"
+
+[shadow]
+resolution = 2048
+distance = 128.0
+solid_materials = [10]
+option = "shadows_enabled"
+resolution_option = "shadow_resolution"
+distance_option = "shadow_distance"
+
+[reflection]
+option = "water_reflections"
+
+[displacement]
+distance = 14.0
+cells = 16
+option = "pbr_displacement"
+cells_option = "displacement_cells"
+
+# ---------------------------------------------------------------------------
+# Sprite Tags (bit i of MaterialInput.tags; max 1 '*' per pattern)
+# ---------------------------------------------------------------------------
+
+[[tags]]
+id = "glass"
+sprites = [
+    "block/glass",
+    "block/*_stained_glass",
+    "block/tinted_glass",
+    "block/glass_pane_top",
+    "block/*_stained_glass_pane_top",
+]
+
+[[tags]]
+id = "ice"
+sprites = [
+    "block/ice",
+    "block/packed_ice",
+    "block/blue_ice",
+    "block/frosted_ice_*",
+]
+
+[[tags]]
+id = "foliage"
+sprites = [
+    "block/*_leaves",
+    "block/azalea_leaves",
+    "block/flowering_azalea_leaves",
+]
+
+[[tags]]
+id = "plants"
+sprites = [
+    "block/short_grass",
+    "block/tall_grass_*",
+    "block/fern",
+    "block/large_fern_*",
+    "block/seagrass",
+    "block/tall_seagrass_*",
+    "block/kelp*",
+    "block/sugar_cane",
+    "block/vine",
+    "block/glow_lichen",
+    "block/hanging_roots",
+    "block/moss_carpet",
+    "block/pink_petals",
+    "block/lily_pad",
+    "block/dandelion",
+    "block/poppy",
+    "block/blue_orchid",
+    "block/allium",
+    "block/azure_bluet",
+    "block/*_tulip",
+    "block/oxeye_daisy",
+    "block/cornflower",
+    "block/lily_of_the_valley",
+    "block/wither_rose",
+    "block/torchflower",
+    "block/pitcher_plant_*",
+    "block/sunflower_*",
+    "block/lilac_*",
+    "block/rose_bush_*",
+    "block/peony_*",
+    "block/wheat_stage*",
+    "block/carrots_stage*",
+    "block/potatoes_stage*",
+    "block/beetroots_stage*",
+    "block/sweet_berry_bush_stage*",
+    "block/*_sapling",
+]
+
+[[tags]]
+id = "metal"
+sprites = [
+    "block/iron_block",
+    "block/gold_block",
+    "block/netherite_block",
+    "block/copper_block",
+    "block/exposed_copper",
+    "block/weathered_copper",
+    "block/oxidized_copper",
+    "block/cut_copper*",
+    "block/exposed_cut_copper*",
+    "block/weathered_cut_copper*",
+    "block/oxidized_cut_copper*",
+    "block/copper_bulb*",
+    "block/exposed_copper_bulb*",
+    "block/weathered_copper_bulb*",
+    "block/oxidized_copper_bulb*",
+    "block/raw_iron_block",
+    "block/raw_gold_block",
+    "block/raw_copper_block",
+    "block/anvil*",
+    "block/chain",
+    "block/iron_bars",
+    "block/iron_door_*",
+    "block/iron_trapdoor",
+    "block/cauldron_*",
+    "block/hopper_*",
+    "block/rail",
+    "block/*_rail",
+    "block/*_rail_on",
+    "block/bell_*",
+    "block/lightning_rod*",
+]
+
+[[tags]]
+id = "polished"
+sprites = [
+    "block/polished_*",
+    "block/smooth_*",
+    "block/quartz_*",
+    "block/amethyst_block",
+    "block/budding_amethyst",
+    "block/amethyst_cluster",
+    "block/*_glazed_terracotta",
+    "block/prismarine*",
+    "block/dark_prismarine",
+    "block/enchanting_table_*",
+    "block/beacon",
+    "block/conduit",
+    "block/end_portal_frame_*",
+]
+
+[[tags]]
+id = "emissive_ore"
+sprites = [
+    "block/*_ore",
+    "block/ancient_debris_*",
+    "block/gilded_blackstone",
+]
+
+[[tags]]
+id = "emissive_block"
+sprites = [
+    "block/glowstone",
+    "block/sea_lantern",
+    "block/shroomlight",
+    "block/ochre_froglight_*",
+    "block/verdant_froglight_*",
+    "block/pearlescent_froglight_*",
+    "block/redstone_lamp_on",
+    "block/redstone_torch",
+    "block/torch",
+    "block/soul_torch",
+    "block/lantern",
+    "block/soul_lantern",
+    "block/campfire_fire",
+    "block/soul_campfire_fire",
+    "block/jack_o_lantern",
+    "block/magma",
+    "block/lava_*",
+    "block/end_rod",
+    "block/crying_obsidian",
+    "block/respawn_anchor_top*",
+    "block/sculk_sensor_*",
+    "block/calibrated_sculk_sensor*",
+]
+
+[[tags]]
+id = "snow_sand"
+sprites = [
+    "block/snow",
+    "block/powder_snow",
+    "block/sand",
+    "block/red_sand",
+    "block/soul_sand",
+]
+
+[[tags]]
+id = "obsidian"
+sprites = [
+    "block/obsidian",
+    "block/crying_obsidian",
+    "block/respawn_anchor_side0",
+    "block/respawn_anchor_side1",
+    "block/respawn_anchor_side2",
+    "block/respawn_anchor_side3",
+    "block/respawn_anchor_side4",
+    "block/respawn_anchor_bottom",
+]
+
+[[tags]]
+id = "matte_organic"
+sprites = [
+    "block/*_wool",
+    "block/*_carpet",
+    "block/*_planks",
+    "block/*_log",
+    "block/*_log_top",
+    "block/*_wood",
+    "block/*_stem",
+    "block/*_stem_top",
+    "block/dirt",
+    "block/coarse_dirt",
+    "block/rooted_dirt",
+    "block/grass_block_top",
+    "block/grass_block_side",
+    "block/podzol_top",
+    "block/podzol_side",
+    "block/mycelium_top",
+    "block/mycelium_side",
+    "block/moss_block",
+    "block/mud",
+    "block/clay",
+    "block/soul_soil",
+    "block/netherrack",
+]
+
+[[tags]]
+id = "gem"
+sprites = [
+    "block/diamond_block",
+    "block/emerald_block",
+    "block/amethyst_block",
+    "block/budding_amethyst",
+]
+
+[[tags]]
+id = "beacon"
+sprites = ["block/beacon"]
+
+[[tags]]
+id = "copper_fresh"
+sprites = [
+    "block/copper_block", "block/cut_copper", "block/chiseled_copper",
+    "block/copper_bulb*", "block/copper_door_*", "block/copper_trapdoor",
+    "block/copper_grate", "block/copper_bars", "block/copper_chain", "block/copper_lantern",
+]
+
+[[tags]]
+id = "copper_exposed"
+sprites = ["block/exposed_*copper", "block/exposed_copper_*"]
+
+[[tags]]
+id = "copper_weathered"
+sprites = ["block/weathered_*copper", "block/weathered_copper_*"]
+
+[[tags]]
+id = "copper_oxidized"
+sprites = ["block/oxidized_*copper", "block/oxidized_copper_*"]
+
+[[tags]]
+id = "amethyst"
+sprites = ["block/amethyst_block", "block/budding_amethyst", "block/amethyst_cluster", "block/*_amethyst_bud"]
+
+[[tags]]
+id = "honey"
+sprites = ["block/honey_block_*"]
+
+# ---------------------------------------------------------------------------
+# Material IDs (first match wins -> MaterialInput.material / VertexInput.material)
+# ---------------------------------------------------------------------------
+
+[[materials]]
+id = 10
+sprites = ["block/*_leaves*", "block/azalea_leaves*", "block/flowering_azalea_leaves*"]
+
+[[materials]]
+id = 11
+sprites = [
+    "block/short_grass",
+    "block/tall_grass_*",
+    "block/fern",
+    "block/large_fern_*",
+    "block/*_sapling",
+    "block/*_tulip",
+    "block/dandelion",
+    "block/poppy",
+    "block/blue_orchid",
+    "block/allium",
+    "block/azure_bluet",
+    "block/oxeye_daisy",
+    "block/cornflower",
+    "block/lily_of_the_valley",
+    "block/wither_rose",
+    "block/torchflower",
+    "block/pitcher_plant_*",
+    "block/sunflower_*",
+    "block/lilac_*",
+    "block/rose_bush_*",
+    "block/peony_*",
+    "block/sugar_cane",
+    "block/wheat_stage*",
+    "block/carrots_stage*",
+    "block/potatoes_stage*",
+    "block/beetroots_stage*",
+    "block/sweet_berry_bush_stage*",
+]
+
+[[materials]]
+id = 12
+sprites = [
+    "block/vine",
+    "block/glow_lichen",
+    "block/hanging_roots",
+    "block/seagrass",
+    "block/tall_seagrass_*",
+    "block/kelp*",
+]
+
+[[materials]]
+id = 20
+sprites = ["block/water_*"]
+
+[[materials]]
+id = 21
+sprites = ["block/lava_*"]
+
+[[materials]]
+id = 30
+sprites = [
+    "block/iron_*",
+    "block/gold_*",
+    "block/*copper*",
+    "block/netherite_*",
+    "block/raw_*_block",
+    "block/anvil*",
+    "block/chain",
+    "block/hopper_*",
+    "block/cauldron_*",
+    "block/*rail*",
+]
+
+[[materials]]
+id = 31
+sprites = [
+    "block/polished_*",
+    "block/smooth_*",
+    "block/quartz_*",
+    "block/amethyst_*",
+    "block/budding_amethyst",
+    "block/*_glazed_terracotta",
+    "block/prismarine*",
+    "block/dark_prismarine",
+]
+
+[[materials]]
+id = 32
+sprites = [
+    "block/glass*",
+    "block/*_stained_glass*",
+    "block/tinted_glass",
+    "block/ice",
+    "block/packed_ice",
+    "block/blue_ice",
+    "block/frosted_ice_*",
+]
+
+[[materials]]
+id = 40
+sprites = ["block/*_ore", "block/ancient_debris_*", "block/gilded_blackstone"]
+
+[[materials]]
+id = 41
+sprites = ["block/magma", "block/crying_obsidian", "block/respawn_anchor_*", "block/sculk_*"]
+
+[[materials]]
+id = 50
+sprites = ["block/snow", "block/powder_snow", "block/sand", "block/red_sand"]
+
+# ---------------------------------------------------------------------------
+# Colored Block Lights (gamma 2.2 values decoded to linear by Horizon)
+# ---------------------------------------------------------------------------
+
+[[lights]]
+color = [1.0, 0.62, 0.28]
+blocks = ["torch", "wall_torch", "lantern", "campfire", "jack_o_lantern", "furnace", "blast_furnace", "smoker"]
+
+[[lights]]
+color = [0.25, 0.78, 1.0]
+blocks = ["soul_torch", "soul_wall_torch", "soul_lantern", "soul_campfire", "soul_fire"]
+
+[[lights]]
+color = [1.15, 0.36, 0.08]
+blocks = ["lava", "magma_block"]
+
+[[lights]]
+color = [1.0, 0.14, 0.10]
+blocks = ["redstone_torch", "redstone_wall_torch", "redstone_lamp", "redstone_ore", "deepslate_redstone_ore"]
+
+[[lights]]
+color = [1.05, 0.78, 0.42]
+blocks = ["glowstone", "shroomlight", "ochre_froglight"]
+
+[[lights]]
+color = [0.68, 0.96, 1.0]
+blocks = ["sea_lantern", "conduit", "verdant_froglight"]
+
+[[lights]]
+color = [0.78, 0.38, 1.0]
+blocks = ["crying_obsidian", "respawn_anchor", "amethyst_cluster", "large_amethyst_bud", "medium_amethyst_bud", "small_amethyst_bud", "pearlescent_froglight", "ender_chest"]
+
+[[lights]]
+color = [1.0, 0.96, 0.92]
+blocks = ["end_rod", "beacon"]
+
+[[lights]]
+color = [1.0, 0.66, 0.34]
+blocks = ["*copper_bulb*"]
+
+[[lights]]
+color = [1.0, 0.68, 0.34]
+blocks = ["*candle*"]
+
+[[lights]]
+color = [0.65, 0.85, 0.55]
+blocks = ["glow_lichen", "cave_vines*"]
+
+[[lights]]
+color = [0.38, 0.96, 0.62]
+blocks = ["copper_torch", "copper_wall_torch", "*copper_lantern*"]
+
+[[lights]]
+color = [0.16, 0.74, 0.84]
+blocks = ["*sculk_sensor*", "sculk_catalyst", "sculk_shrieker"]
+
+[[lights]]
+color = [1.0, 0.56, 0.24]
+blocks = ["trial_spawner", "vault", "creaking_heart"]
+
+[[lights]]
+color = [0.64, 0.42, 1.0]
+blocks = ["enchanting_table", "dragon_egg", "end_portal_frame"]
+
+[[lights]]
+color = [0.46, 0.94, 0.72]
+blocks = ["sea_pickle"]
+
+[[lights]]
+color = [0.86, 0.96, 0.40]
+blocks = ["firefly_bush"]
+
+# ---------------------------------------------------------------------------
+# Colored Particle Lights (gamma 2.2 values decoded to linear by Horizon)
+# ---------------------------------------------------------------------------
+
+[[particle_lights]]
+color = [0.68, 0.56, 0.40]
+reach = 3.2
+particles = ["firework", "flash", "electric_spark"]
+
+[[particle_lights]]
+color = [0.42, 0.20, 0.62]
+reach = 2.6
+particles = ["dragon_breath", "end_rod"]
+
+[[particle_lights]]
+color = [0.42, 0.24, 0.09]
+reach = 2.0
+particles = ["flame", "small_flame"]
+
+[[particle_lights]]
+color = [1.0, 0.42, 0.12]
+reach = 2.8
+particles = ["lava", "dripping_lava", "falling_lava", "landing_lava", "dripping_dripstone_lava", "falling_dripstone_lava"]
+
+[[particle_lights]]
+color = [0.16, 0.50, 0.62]
+reach = 2.2
+particles = ["soul_fire_flame", "soul"]
+
+[[particle_lights]]
+color = [0.22, 0.56, 0.36]
+reach = 2.0
+particles = ["copper_fire_flame"]
+
+[[particle_lights]]
+color = [0.64, 0.24, 0.88]
+reach = 2.2
+particles = ["portal", "reverse_portal", "dripping_obsidian_tear", "falling_obsidian_tear", "landing_obsidian_tear"]
+
+[[particle_lights]]
+color = [0.16, 0.72, 0.82]
+reach = 2.5
+particles = ["sculk_soul", "sculk_charge", "sculk_charge_pop", "shriek", "vibration"]
+
+[[particle_lights]]
+color = [0.32, 0.90, 0.98]
+reach = 4.2
+particles = ["sonic_boom"]
+
+[[particle_lights]]
+color = [0.40, 0.88, 0.68]
+reach = 2.0
+particles = ["glow", "glow_squid_ink", "falling_spore_blossom", "spore_blossom_air"]
+
+[[particle_lights]]
+color = [0.84, 0.96, 0.36]
+reach = 2.2
+particles = ["firefly"]
+
+[[particle_lights]]
+color = [0.68, 0.54, 0.24]
+reach = 2.2
+particles = ["totem_of_undying", "vault_connection", "enchant"]
+
+[[particle_lights]]
+color = [0.32, 0.44, 0.78]
+reach = 2.2
+particles = ["trial_omen", "ominous_spawning", "witch"]
+
+# ---------------------------------------------------------------------------
+# User Options (mapped to WGSL overrides and [shadow] sizing)
+# ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------- post chain
+# `previous` stays the world's picture through every pass that has an `output`;
+# "compose" is the first pass that advances it, followed by "end_rift" before bloom.
+
+[[resource]]
+name = "ao"
+format = "rgba16float"
+size = [960, 540]
+keep = "view"
+
+[[resource]]
+name = "zp_luma_tiles"
+format = "rgba32uint"
+size = [64, 96]
+keep = "view"
+
+[[resource]]
+name = "zp_exposure"
+format = "rgba32float"
+size = [1, 1]
+keep = "view"
+
+[[resource]]
+name = "vlight"
+format = "rgba16float"
+size = [960, 540]
+keep = "view"
+
+[[resource]]
+name = "zp_reflection"
+format = "rgba16float"
+scale = 1
+keep = "view"
+
+[[resource]]
+name = "zp_optics_sources"
+format = "rgba32float"
+size = [3, 1]
+keep = "view"
+
+[[resource]]
+name = "zp_climate"
+format = "rgba16float"
+size = [64, 33]
+keep = "view"
+
+[[before_world]]
+file = "compute/sky_lut.wgsl"
+name = "Sky LUT & biome climate"
+dispatch = [64, 33, 1]
+workgroup = [8, 8, 1]
+reads = ["zp_climate_previous"]
+writes = ["zp_climate"]
+
+[[post]]
+file = "post/gtao.wgsl"
+name = "GTAO"
+output = "ao"
+reads = ["ao_previous"]
+
+[[post]]
+file = "post/volumetric.wgsl"
+files = ["post/reprojection.wgsl"]
+name = "Volumetric light"
+output = "vlight"
+reads = ["vlight_previous"]
+
+[[post]]
+file = "post/compose.wgsl"
+name = "Compose AO + light"
+reads = ["ao", "vlight", "zp_climate"]
+
+[[post]]
+file = "post/ssr.wgsl"
+files = ["post/reprojection.wgsl"]
+name = "Reflections"
+output = "zp_reflection"
+reads = ["zp_reflection_previous"]
+
+[[post]]
+file = "post/end_rift.wgsl"
+files = ["shared/rift_source.wgsl"]
+name = "End warp rift"
+reads = ["zp_reflection"]
+
+[[post]]
+file = "compute/exposure_histogram.wgsl"
+name = "Luminance histogram"
+compute = true
+dispatch = [768, 8, 1]
+workgroup = [64, 1, 1]
+writes = ["zp_luma_tiles"]
+
+[[post]]
+file = "compute/exposure_resolve.wgsl"
+name = "Exposure adaptation"
+compute = true
+dispatch = [64, 1, 1]
+workgroup = [64, 1, 1]
+reads = ["zp_luma_tiles", "zp_exposure_previous"]
+writes = ["zp_exposure"]
+
+[[post]]
+file = "post/bloom_down_a.wgsl"
+name = "Bloom 1/2"
+output = "bloom_a"
+scale = 0.5
+
+[[post]]
+file = "post/bloom_down_b.wgsl"
+name = "Bloom 1/4"
+output = "bloom_b"
+scale = 0.25
+
+[[post]]
+file = "post/bloom_wide.wgsl"
+name = "Bloom wide"
+output = "bloom_wide"
+scale = 0.25
+
+[[post]]
+file = "post/smaa_edges.wgsl"
+name = "Morphological edges"
+output = "zp_edges"
+
+[[post]]
+file = "post/smaa_weights.wgsl"
+name = "Morphological weights"
+output = "zp_edge_weights"
+
+[[post]]
+file = "post/fxaa.wgsl"
+name = "Anti-aliasing"
+
+[[post]]
+file = "compute/optics_sources.wgsl"
+files = ["shared/rift_source.wgsl"]
+name = "Optical light sources"
+compute = true
+dispatch = [64, 1, 1]
+workgroup = [64, 1, 1]
+writes = ["zp_optics_sources"]
+
+[[post]]
+file = "post/grade.wgsl"
+files = ["post/reprojection.wgsl", "post/optics.wgsl"]
+name = "Bloom + colour grade"
+reads = ["zp_exposure", "zp_optics_sources"]
+
+# ---------------------------------------------------------------- options
+# Each id is the `override` of the same name in some stage (post/*, sky, tonemap, material/*, entity, vertex),
+# except shadows_enabled / shadow_resolution / shadow_distance, which [shadow] reads.
+
+[[options]]
+id = "quality_mode"
+name = "Quality mode"
+description = "Performance: fewer AO and light-shaft samples. Balanced: default. Quality: more samples, cleaner shadows in creases and shafts."
+type = "choice"
+values = ["Performance", "Balanced", "Quality"]
+default = "Balanced"
+
+[[options]]
+id = "volumetric_light"
+name = "Volumetric light"
+type = "float"
+default = 0.6
+min = 0.0
+max = 3.0
+step = 0.1
+description = "Strength of light shafts. 0 turns them off. Needs shadows."
+resets = "view"
+
+[[options]]
+id = "ssr_enabled"
+name = "Surface Reflections (SSR)"
+description = "Screen-space reflections of light sources and terrain on metals, gems, polished blocks, and rain puddles."
+type = "bool"
+default = true
+resets = "view"
+
+[[options]]
+id = "temporal_ssr"
+name = "Temporal Reflections"
+description = "Experimental history for reflections of solid terrain on stable surfaces."
+type = "bool"
+default = false
+resets = "view"
+
+[[options]]
+id = "temporal_light"
+name = "Temporal Light Shafts"
+description = "Experimental history for volumetric light in front of solid terrain."
+type = "bool"
+default = false
+resets = "view"
+
+[[options]]
+id = "ao_strength"
+name = "Ambient occlusion"
+type = "float"
+default = 1.0
+min = 0.0
+max = 1.5
+step = 0.05
+description = "How dark creases and corners get. 0 turns it off."
+resets = "view"
+
+[[options]]
+id = "temporal_ao"
+name = "Temporal Ambient Occlusion"
+type = "bool"
+default = false
+resets = "view"
+description = "Blend ambient occlusion across frames on stable terrain. Experimental."
+
+[[options]]
+id = "bloom"
+name = "Bloom"
+type = "float"
+default = 1.0
+min = 0.0
+max = 3.0
+step = 0.1
+description = "Glow around bright light. 0 turns it off."
+
+[[options]]
+id = "fxaa"
+name = "Edge smoothing"
+type = "bool"
+default = true
+description = "Enable spatial anti-aliasing. Uses FXAA unless Morphological AA is enabled."
+
+[[options]]
+id = "morphological_aa"
+name = "Morphological AA (Experimental)"
+type = "bool"
+default = false
+description = "Use a spatial SMAA-inspired filter instead of FXAA. Edge smoothing must be enabled."
+
+[[options]]
+id = "saturation"
+name = "Saturation"
+type = "float"
+default = 1.05
+min = 0.0
+max = 2.0
+step = 0.05
+description = "How colourful the picture is."
+
+[[options]]
+id = "color_mood"
+name = "Color Mood"
+description = "Natural keeps Zenith's original colors. The other looks change shadows, midtones and highlights."
+type = "choice"
+values = ["Natural", "Cinematic", "Warm Film", "Nordic Cold", "Fantasy"]
+default = "Natural"
+
+[[options]]
+id = "lens_flare"
+name = "Lens Flare"
+description = "Soft streaks and reflections from visible sun, beacons, and the End rift. 0 turns it off."
+type = "float"
+default = 0.0
+min = 0.0
+max = 1.0
+step = 0.05
+
+[[options]]
+id = "depth_of_field"
+name = "Depth of Field"
+description = "Soften surfaces away from the focus plane. 0 turns it off."
+type = "float"
+default = 0.0
+min = 0.0
+max = 2.0
+step = 0.1
+
+[[options]]
+id = "focus_distance"
+name = "Focus Distance (Blocks)"
+description = "Set a fixed focus distance, or use 0 to focus on the block at the crosshair."
+type = "float"
+default = 0.0
+min = 0.0
+max = 64.0
+step = 1.0
+
+[[options]]
+id = "camera_motion_blur"
+name = "Camera Motion Blur"
+description = "Soft blur on terrain during camera movement. 0 turns it off."
+type = "float"
+default = 0.0
+min = 0.0
+max = 1.0
+step = 0.05
+
+[[options]]
+id = "clouds"
+name = "Clouds"
+description = "Ray-marched clouds."
+type = "bool"
+default = true
+
+[[options]]
+id = "cloud_coverage"
+name = "Cloud coverage"
+type = "float"
+default = 0.48
+min = 0.0
+max = 1.0
+step = 0.02
+
+[[options]]
+id = "bob_sky_match"
+name = "Sky follows view bob"
+description = "The engine draws the sky without the walking sway, so it stays still while the ground rocks against it. On: the sky sways with the ground. Off: the engine's sky."
+type = "bool"
+default = true
+
+[[options]]
+id = "sky_saturation"
+name = "Sky saturation"
+type = "float"
+default = 1.0
+min = 0.0
+max = 1.6
+step = 0.05
+
+[[options]]
+id = "cirrus_clouds"
+name = "High Cirrus Clouds"
+description = "Wispy high-altitude ice-crystal clouds above the main cumulus layer."
+type = "bool"
+default = true
+
+[[options]]
+id = "aurora"
+name = "Night Aurora & Milky Way"
+description = "Render the galactic Milky Way band and subtle boreal aurora curtains at night."
+type = "bool"
+default = true
+
+[[options]]
+id = "atmospheric_fog"
+name = "Height Fog & Aerial Perspective"
+description = "Valley mist, dawn mist over water, distant haze and outdoor biome lighting. 0 turns them off."
+type = "float"
+default = 1.0
+min = 0.0
+max = 2.0
+step = 0.1
+
+[[options]]
+id = "auto_exposure"
+name = "Auto Exposure (Eye Adaptation)"
+description = "Smoothly adapt exposure between bright and dark views. Off keeps only the manual EV setting."
+type = "bool"
+default = true
+resets = "view"
+
+[[options]]
+id = "histogram_exposure"
+name = "Meter Exposure from Image"
+description = "Measure actual HDR scene brightness. Off uses the older eye-light metering while auto exposure is enabled."
+type = "bool"
+default = true
+resets = "view"
+
+[[options]]
+id = "exposure_bias"
+name = "Exposure (EV)"
+type = "float"
+default = 0.0
+min = -4.0
+max = 4.0
+step = 0.25
+
+[[options]]
+id = "tonemap_curve"
+name = "Tone curve"
+type = "choice"
+values = ["Soft", "Neutral", "Contrast", "AgX"]
+default = "AgX"
+
+[[options]]
+id = "shadows_enabled"
+name = "Real-Time Shadows"
+description = "Cast real-time sun and moon shadows across terrain and entities."
+type = "bool"
+default = true
+
+[[options]]
+id = "shadow_resolution"
+name = "Shadow Resolution"
+description = "Resolution of the shadow map in texels."
+type = "choice"
+values = ["1024", "2048", "4096"]
+default = "2048"
+
+[[options]]
+id = "shadow_distance"
+name = "Shadow Distance"
+description = "Half-width of the area covered by the shadow map, in blocks."
+type = "choice"
+values = ["64", "96", "128", "192", "256"]
+default = "128"
+
+[[options]]
+id = "shadow_filter_quality"
+name = "Shadow Filter Quality"
+description = "Number of PCF taps per pixel for shadow penumbra smoothing."
+type = "choice"
+values = ["Low", "Medium", "High"]
+default = "Medium"
+
+[[options]]
+id = "shadow_softness"
+name = "Shadow Softness"
+description = "Filter radius in shadow texels."
+type = "float"
+default = 1.35
+min = 0.25
+max = 3.5
+step = 0.05
+
+[[options]]
+id = "colored_shadows"
+name = "Colored Translucent Shadows"
+description = "Tint sunlight passing through stained glass and simulate water caustics."
+type = "bool"
+default = true
+
+[[options]]
+id = "shadow_pcss"
+name = "Variable Shadow Softness (PCSS)"
+description = "Keep shadows crisp at contact points and soften them naturally with caster distance."
+type = "bool"
+default = true
+
+[[options]]
+id = "cloud_shadows"
+name = "Cloud Shadows"
+description = "Project soft drifting shadows from overhead clouds onto terrain and entities."
+type = "bool"
+default = true
+
+[[options]]
+id = "contact_shadows"
+name = "Screen-Space Contact Shadows"
+description = "Fill tiny shadow-bias leaks at the base of grass, fences, stairs, and block corners."
+type = "bool"
+default = true
+
+[[options]]
+id = "block_light_strength"
+name = "Block Light Intensity"
+description = "Brightness of torches, lanterns, and colored block light sources."
+type = "float"
+default = 1.15
+min = 0.2
+max = 2.5
+step = 0.05
+
+[[options]]
+id = "ambient_strength"
+name = "Sky Ambient Intensity"
+description = "Strength of indirect sky and hemisphere bounce lighting."
+type = "float"
+default = 1.0
+min = 0.4
+max = 2.0
+step = 0.05
+
+[[options]]
+id = "emissive_strength"
+name = "Emissive Glow"
+description = "Intensity of glowing blocks, lava, and emissive entity eyes."
+type = "float"
+default = 1.4
+min = 0.2
+max = 3.0
+step = 0.1
+
+[[options]]
+id = "ore_glow"
+name = "Glowing Ores & Magma"
+description = "Selectively illuminate bright mineral veins on ore blocks."
+type = "bool"
+default = true
+
+[[options]]
+id = "pbr_specular"
+name = "PBR Specular & Normals"
+description = "Enable GGX specular highlights and LabPBR normal/specular resource pack support."
+type = "bool"
+default = true
+
+[[options]]
+id = "procedural_pbr"
+name = "Procedural Block Relief"
+description = "Generate micro-normals, crevice AO, and roughness detail from vanilla block textures when no LabPBR pack is active."
+type = "bool"
+default = true
+
+[[options]]
+id = "pbr_pom"
+name = "Parallax Occlusion Mapping (POM)"
+description = "Trace depth and self-shadows from LabPBR height maps. Vanilla sprites retain procedural micro-relief and their original texture filtering."
+type = "bool"
+default = true
+
+[[options]]
+id = "pom_depth"
+name = "Relief Depth (POM / Displacement)"
+description = "Maximum physical depth of block relief and crevices, in blocks."
+type = "float"
+default = 0.06
+min = 0.02
+max = 0.15
+step = 0.01
+
+[[options]]
+id = "pbr_displacement"
+name = "Geometry Displacement (LabPBR)"
+description = "Subdivide and physically displace nearby solid faces when a LabPBR pack with height maps is active."
+type = "bool"
+default = true
+
+[[options]]
+id = "displacement_cells"
+name = "Displacement Grid Density"
+description = "Subdivision cells per block face for LabPBR geometry displacement."
+type = "choice"
+values = ["8", "16", "32"]
+default = "16"
+
+[[options]]
+id = "rain_wetness"
+name = "Rain Wetness & Puddles"
+description = "Wet blocks and exposed entities during rain, with reflective terrain puddles and gradual drying."
+type = "bool"
+default = true
+
+[[options]]
+id = "foliage_sss"
+name = "Foliage Subsurface Scattering"
+description = "Allow sunlight to softly transmit through leaves and plants."
+type = "bool"
+default = true
+
+[[options]]
+id = "snow_sand_sparkle"
+name = "Snow & Sand Sparkle"
+description = "Add subtle sunlight crystal glints on snow and sand."
+type = "bool"
+default = true
+
+[[options]]
+id = "water_reflections"
+name = "Water Mirror Reflections"
+description = "Reflect terrain and sky on water surfaces using Horizon's planar mirror."
+type = "bool"
+default = true
+
+[[options]]
+id = "water_wave_strength"
+name = "Water Wave Strength"
+description = "Height of procedural normal-mapped ripples on water."
+type = "float"
+default = 1.0
+min = 0.0
+max = 2.0
+step = 0.05
+
+[[options]]
+id = "water_absorption"
+name = "Water Depth Absorption"
+description = "Controls how quickly water transitions from clear shallows to deep tint."
+type = "float"
+default = 1.0
+min = 0.2
+max = 2.5
+step = 0.05
+
+[[options]]
+id = "underwater_clarity"
+name = "Underwater clarity"
+type = "float"
+default = 1.8
+min = 1.0
+max = 3.0
+step = 0.1
+description = "How far terrain and plants stay visible under water. Higher values give clearer water."
+
+[[options]]
+id = "water_foam"
+name = "Shoreline Foam"
+description = "Render soft animated foam where shallow water meets terrain."
+type = "bool"
+default = true
+
+[[options]]
+id = "water_refraction"
+name = "Water Refraction"
+description = "Refract submerged terrain and entities through animated water waves using true spectral absorption."
+type = "bool"
+default = true
+
+[[options]]
+id = "glass_refraction"
+name = "Glass & Ice Refraction"
+description = "Apply subtle optical refraction and spectral colored transmission through stained glass and translucent ice."
+type = "bool"
+default = true
+
+[[options]]
+id = "waving_foliage"
+name = "Waving Foliage"
+description = "Animate grass, flowers, crops, vines, and leaves in the wind."
+type = "bool"
+default = true
+
+[[options]]
+id = "waving_water"
+name = "Waving Water"
+description = "Gently displace water surface vertices with waves."
+type = "bool"
+default = true
+
+[[options]]
+id = "wind_strength"
+name = "Wind Strength"
+description = "Global amplitude multiplier for vertex wind animation."
+type = "float"
+default = 1.0
+min = 0.0
+max = 2.5
+step = 0.05
+
+[[options]]
+id = "end_rift"
+name = "End Warp Rift"
+description = "Animated 3D volumetric warp rift in The End sky."
+type = "bool"
+default = true
+
+[[options]]
+id = "end_rift_speed"
+name = "Rift Animation Speed"
+description = "Playback speed multiplier for The End warp rift."
+type = "float"
+default = 1.0
+min = 0.25
+max = 4.0
+step = 0.25
+
+# ---------------------------------------------------------------------------
+# Options Pages Fragment (link page:shadows, page:lighting, page:water, page:world_motion from main)
+# ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------- options screen
+
+[[pages]]
+id = "main"
+name = "Zenith"
+items = ["page:shadows", "page:lighting", "page:water", "page:effects", "page:image", "page:sky", "page:world_motion", "page:end_rift"]
+
+[[pages]]
+id = "effects"
+name = "Effects"
+description = "Quality mode, ambient occlusion and light shafts."
+items = ["quality_mode", "ao_strength", "temporal_ao", "volumetric_light", "temporal_light", "ssr_enabled", "temporal_ssr"]
+
+[[pages]]
+id = "image"
+name = "Image"
+description = "Bloom, anti-aliasing, exposure and tone curve."
+items = ["bloom", "fxaa", "morphological_aa", "auto_exposure", "histogram_exposure", "exposure_bias", "tonemap_curve", "saturation", "color_mood", "lens_flare", "depth_of_field", "focus_distance", "camera_motion_blur"]
+
+[[pages]]
+id = "sky"
+name = "Sky"
+description = "Cumulus & cirrus clouds, aurora, Milky Way, height fog, and sky colour."
+items = ["clouds", "cloud_coverage", "cirrus_clouds", "aurora", "atmospheric_fog", "sky_saturation", "bob_sky_match"]
+
+[[pages]]
+id = "shadows"
+name = "Shadows"
+description = "Shadow map quality, distance, variable penumbra, cloud shadows, contact shadows, and translucent tinting."
+items = [
+    "shadows_enabled",
+    "shadow_resolution",
+    "shadow_distance",
+    "shadow_filter_quality",
+    "shadow_softness",
+    "shadow_pcss",
+    "colored_shadows",
+    "cloud_shadows",
+    "contact_shadows",
+]
+
+[[pages]]
+id = "lighting"
+name = "Lighting & PBR"
+description = "Block light, ambient fill, LabPBR speculars, and surface effects."
+items = [
+    "block_light_strength",
+    "ambient_strength",
+    "emissive_strength",
+    "ore_glow",
+    "pbr_specular",
+    "procedural_pbr",
+    "pbr_pom",
+    "pom_depth",
+    "pbr_displacement",
+    "displacement_cells",
+    "rain_wetness",
+    "foliage_sss",
+    "snow_sand_sparkle",
+]
+
+[[pages]]
+id = "water"
+name = "Water"
+description = "Reflections, waves, refraction, absorption, caustics, and shoreline foam."
+items = [
+    "water_reflections",
+    "water_refraction",
+    "glass_refraction",
+    "water_wave_strength",
+    "water_absorption",
+    "underwater_clarity",
+    "water_foam",
+]
+
+[[pages]]
+id = "world_motion"
+name = "World Motion"
+description = "Wind animation for plants, leaves, and water."
+items = [
+    "waving_foliage",
+    "waving_water",
+    "wind_strength",
+]
+
+[[pages]]
+id = "end_rift"
+name = "The End"
+description = "Animated volumetric warp rift in The End."
+items = [
+    "end_rift",
+    "end_rift_speed",
+]
