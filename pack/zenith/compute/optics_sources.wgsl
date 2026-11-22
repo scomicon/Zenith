@@ -1,7 +1,6 @@
 // src: Hullin et al., Physically-Based Real-Time Lens Flare Rendering, SIGGRAPH 2011 (visible bright sources); Horizon Shader API 0.2 (projection, depth and surface data).
 
 override lens_flare: f32 = 0.0;
-override bob_sky_match: bool = true;
 
 var<workgroup> zp_beacon_candidates: array<vec4<f32>, 64>;
 
@@ -34,16 +33,7 @@ fn zp_sun_source() -> vec4<f32> {
     if frame.dimension != 0 || frame.sun_direction.y <= 0.01 {
         return vec4<f32>(0.0);
     }
-    var projected = zp_project_light(vec4<f32>(frame.sun_direction, 0.0));
-    if !bob_sky_match {
-        let view_sun = (frame.view * vec4<f32>(frame.sun_direction, 0.0)).xyz;
-        if view_sun.z >= -1e-4 {
-            return vec4<f32>(0.0);
-        }
-        let row_x = vec3<f32>(frame.projection[0][0], frame.projection[1][0], frame.projection[2][0]);
-        let row_y = vec3<f32>(frame.projection[0][1], frame.projection[1][1], frame.projection[2][1]);
-        projected = vec4<f32>(view_sun.xy / -view_sun.z * vec2<f32>(length(row_x), -length(row_y)) * 0.5 + 0.5, 0.0, 1.0);
-    }
+    let projected = zp_project_light(vec4<f32>(frame.sun_direction, 0.0));
     if projected.w <= 0.0 || !zp_source_in_frame(projected.xy) {
         return vec4<f32>(0.0);
     }

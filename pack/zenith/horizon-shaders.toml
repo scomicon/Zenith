@@ -912,13 +912,6 @@ max = 1.0
 step = 0.02
 
 [[options]]
-id = "bob_sky_match"
-name = "Sky follows view bob"
-description = "The engine draws the sky without the walking sway, so it stays still while the ground rocks against it. On: the sky sways with the ground. Off: the engine's sky."
-type = "bool"
-default = false
-
-[[options]]
 id = "sky_saturation"
 name = "Sky saturation"
 type = "float"
@@ -1289,7 +1282,7 @@ items = ["bloom", "fxaa", "morphological_aa", "auto_exposure", "histogram_exposu
 id = "sky"
 name = "Sky"
 description = "Cumulus & cirrus clouds, aurora, Milky Way, height fog, and sky colour."
-items = ["clouds", "cloud_coverage", "cirrus_clouds", "aurora", "atmospheric_fog", "sky_saturation", "bob_sky_match"]
+items = ["clouds", "cloud_coverage", "cirrus_clouds", "aurora", "atmospheric_fog", "sky_saturation"]
 
 [[pages]]
 id = "shadows"

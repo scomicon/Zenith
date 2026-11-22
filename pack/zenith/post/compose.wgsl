@@ -16,12 +16,9 @@
 // per tap. Mixing sky haze across a block silhouette creates a shifted duplicate
 // contour. Sky/terrain and discontinuous surface depths must stay separate.
 //
-// View bob: Horizon draws sky/sky.wgsl unbobbed, then draws the engine moon quad onto the sky
-// with `globals.view_proj` (which already carries `frame.bob * frame.spin` — 1x bob). Reprojecting
-// Overworld sky pixels again in post would apply a 2x bob to the moon and clip it at terrain edges.
-// Therefore Overworld view-bob sky matching (`bob_sky_match`) runs inside `sky/sky.wgsl` via
-// `sky_bob_direction`. End and Nether skies (`dimension == 1 / -1`) are rendered here directly via
-// `zp_sky_ray`, which already reads the bobbed projection. Numerical regression: `tools/tests/sky-bob.test.mjs`.
+// View bob: the engine draws sky/sky.wgsl along the ray through the bobbed projection, as it draws the terrain,
+// the sun and the moon, so the sky needs no correction here or in the sky stage. End and Nether skies
+// (`dimension == 1 / -1`) are rendered here directly via `zp_sky_ray`, which also reads the bobbed projection.
 
 override ao_strength: f32 = 1.0;
 override volumetric_light: f32 = 0.6;

@@ -14,7 +14,6 @@ override cloud_coverage: f32 = 0.48;
 override sky_saturation: f32 = 1.0;
 override cirrus_clouds: bool = true;
 override aurora: bool = true;
-override bob_sky_match: bool = false;
 
 const SKY_PI: f32 = 3.14159265359;
 const SKY_GROUND: f32 = 6360.0;
@@ -321,40 +320,6 @@ fn sky_cloud_layer(d: vec3<f32>, background: vec3<f32>, sun: vec3<f32>, daylight
     return mix(background, color + transmission * background, smoothstep(0.02, 0.14, abs(d.y)));
 }
 
-// Apply Horizon's view-bob & hurt-tilt rotation directly inside the sky stage (unbobbed pass)
-// so stars, clouds, sun & horizon match terrain while Horizon's own moon quad stays single-bobbed.
-fn sky_bob_direction(dir: vec3<f32>) -> vec3<f32> {
-    let row_x = vec3<f32>(frame.projection[0][0], frame.projection[1][0], frame.projection[2][0]);
-    let row_y = vec3<f32>(frame.projection[0][1], frame.projection[1][1], frame.projection[2][1]);
-    let row_w = vec3<f32>(frame.projection[0][3], frame.projection[1][3], frame.projection[2][3]);
-    let lens = vec2<f32>(length(row_x), length(row_y));
-    let x = row_x / max(lens.x, 1e-6);
-    let y = row_y / max(lens.y, 1e-6);
-    let aspect = frame.resolution.x / max(frame.resolution.y, 1.0);
-    if (abs(length(row_w) - 1.0) > 1e-4 || abs(lens.x * aspect / max(lens.y, 1e-6) - 1.0) > 1e-4
-        || abs(dot(x, y)) > 1e-4 || abs(dot(x, row_w)) > 1e-4 || abs(dot(y, row_w)) > 1e-4) {
-        return dir;
-    }
-    let v = (frame.view * vec4<f32>(dir, 0.0)).xyz;
-    if (v.z >= -1e-4) {
-        return dir;
-    }
-    let ndc = lens * v.xy / -v.z;
-    let near = frame.projection_inverse * vec4<f32>(ndc, 1.0, 1.0);
-    let far = frame.projection_inverse * vec4<f32>(ndc, 0.0, 1.0);
-    let ray_view = far.xyz * near.w - near.xyz * far.w;
-    if (dot(ray_view, ray_view) <= 1e-12) {
-        return dir;
-    }
-    let oriented = select(-ray_view, ray_view, dot(ray_view, v) >= 0.0);
-    let world_ray = (frame.view_inverse * vec4<f32>(oriented, 0.0)).xyz;
-    let wlen_sq = dot(world_ray, world_ray);
-    if (wlen_sq <= 1e-12) {
-        return dir;
-    }
-    return world_ray * inverseSqrt(wlen_sq);
-}
-
 fn sky_underwater_fog_color(raw_fog: vec3<f32>, sun_y: f32, sky_light: f32, calibrate: bool) -> vec3<f32> {
     let clean = max(raw_fog, vec3<f32>(0.0));
     if (!calibrate) {
@@ -373,8 +338,9 @@ fn sky_underwater_fog_color(raw_fog: vec3<f32>, sun_y: f32, sky_light: f32, cali
 }
 
 fn sky(input: SkyInput) -> vec4<f32> {
-    let raw_d = normalize(input.direction);
-    let d = select(raw_d, sky_bob_direction(raw_d), bob_sky_match && frame.dimension == 0);
+    // The engine draws the sky along the ray through the bobbed projection (measured: the horizon line of this
+    // direction stays within 1 px of terrain while walking), so no pack-side bob correction is applied.
+    let d = normalize(input.direction);
     if (frame.eye_in == 1u) {
         let uw_active = frame.dimension == 0 && frame.blindness <= 0.0 && frame.darkness <= 0.0 && frame.night_vision <= 0.001;
         let uw_fog = sky_underwater_fog_color(frame.fog_color, frame.sun_direction.y, max(frame.eye_light_smooth.y, frame.eye_light.y), uw_active);

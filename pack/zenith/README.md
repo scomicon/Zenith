@@ -76,7 +76,7 @@ several stages). A `choice` is a `u32` holding the index of the value. `shadows_
 | `color_mood`, `lens_flare`, `depth_of_field`, `focus_distance`, `camera_motion_blur` | choice, f32, f32, f32, f32 | Image options in `post/optics.wgsl`; `compute/optics_sources.wgsl` locates the flare sources |
 | `temporal_ao`, `temporal_ssr`, `temporal_light` | bool | Corresponding AO, SSR, and volume passes; experimental, off by default |
 | `saturation` | f32 | `post/grade.wgsl` |
-| `clouds`, `cloud_coverage`, `cirrus_clouds`, `aurora`, `sky_saturation`, `bob_sky_match` | bool, f32, bool, bool, f32, bool | `sky/sky.wgsl`, `material/common_local.wgsl`, `entity/entity.wgsl` (`clouds`, `cloud_coverage`) |
+| `clouds`, `cloud_coverage`, `cirrus_clouds`, `aurora`, `sky_saturation` | bool, f32, bool, bool, f32 | `sky/sky.wgsl`, `material/common_local.wgsl`, `entity/entity.wgsl` (`clouds`, `cloud_coverage`) |
 | `atmospheric_fog` | f32 | Sky settings, default 1.0; controls height fog and biome-dependent outdoor light. `compute/climate.wgsl` smooths climate changes while walking. |
 | `auto_exposure`, `histogram_exposure`, `exposure_bias` (EV), `tonemap_curve` | bool, bool, f32, choice (Soft, Neutral, Contrast, AgX) | Histogram and adaptation in `compute/`, adaptive gain in `post/grade.wgsl`, manual EV and optional legacy eye-light adaptation in `tonemap/tonemap.wgsl` |
 | `underwater_clarity` | f32 | `shared/fog.wgsl`; Water settings, default 1.8 |

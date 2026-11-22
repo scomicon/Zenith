@@ -251,3 +251,9 @@ Status: `ok` written from the sources, `rewritten` rewritten from sources, `pend
 | File | Algorithm / change | Sources | Own choices |
 |---|---|---|---|
 | `sky/sky.wgsl`, `shared/common.wgsl` | Layer 150-290 blocks. A 2D macro map (the existing fBm) sets cloud presence and height, 3D billow noise erodes it, light-march taps read the macro field only | A. Schneider, N. Vos, SIGGRAPH 2015 (shape / detail split, height profile) | Horizontal slices of constant height (24 / 36 / 48 by `quality_mode`), one sample per slice at the middle of the ray's path, so sample positions are continuous in the ray's elevation and do not swim with view bob; cloud top follows the macro value (thin edges 30% of the layer, cores 100%), two 3D noise octaves at 0.012 and 0.028 per block, underside ambient 0.40 to 1.25 by height; terrain shadows now sample the mid-plane at 220 |
+
+### View bob and the sky
+
+| File | Change | Basis |
+|---|---|---|
+| `sky/sky.wgsl`, `compute/optics_sources.wgsl`, `post/compose.wgsl`, `horizon-shaders.toml` | Removed `sky_bob_direction` and the `bob_sky_match` option. The sky is drawn along `input.direction` as the engine gives it, and the sun's lens-flare source is projected with the bobbed projection | Measured in game (nightly-2026-11-21 `8f83e5c`) with a world-fixed elevation line drawn in the sky stage while walking: the engine's direction stays within 1 px of the terrain (std 0.9 px), while the pack's extra bob moved it by 5 px with a 2.6 px spread, because the engine already applies the bob (`posed_view(pose)` in its sky pass) and the pack applied it a second time |
