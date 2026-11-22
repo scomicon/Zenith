@@ -66,7 +66,8 @@ several stages). A `choice` is a `u32` holding the index of the value. `shadows_
 | Option | Type | Declared in |
 |---|---|---|
 | `quality_mode` | choice (Performance, Balanced, Quality) | `post/gtao.wgsl`, `post/volumetric.wgsl`, `post/compose.wgsl`, `post/ssr.wgsl`, `post/end_rift.wgsl` |
-| `ssr_enabled` | bool | `post/ssr.wgsl` |
+| `ssr_enabled` | bool | `post/ssr.wgsl` (screen-space DDA ray march) |
+| `screen_sss`, `sss_strength` | bool, f32 | `post/compose.wgsl`; screen-space subsurface scattering for snow, bone, wax, honeycomb and cake (tag `sss`, `scene_surface.data = 0.45`) |
 | `contact_shadows` | bool | `post/compose.wgsl` |
 | `ao_strength` | f32 | `post/gtao.wgsl`, `post/compose.wgsl` |
 | `volumetric_light` | f32 | `post/volumetric.wgsl`, `post/compose.wgsl` |
@@ -101,8 +102,8 @@ portal when `frame.dimension == 1` before `bloom_down_a`.
 |---|---|---|---|
 | 1 | `gtao.wgsl` | `ao` (960×540): r visibility, g distance, b normal key, a validity and medium | depth, surface, `ao_previous` |
 | 2 | `volumetric.wgsl` | `vlight` (960×540): rgb in-scattered light, a history depth | depth, shadow map, surface, `vlight_previous` |
-| 3 | `compose.wgsl` | chain | `previous`, `ao`, `vlight`, `depth`, `scene_surface`, `shadow_map` |
-| 4 | `ssr.wgsl` | `zp_reflection`: signed RGB contribution and history depth | `previous`, depth, surface, `zp_reflection_previous` |
+| 3 | `compose.wgsl` | chain (also screen-space SSS before AO) | `previous`, `ao`, `vlight`, `depth`, `scene_surface`, `shadow_map` |
+| 4 | `ssr.wgsl` (perspective-correct screen-space DDA march, 40 / 64 / 96 samples) | `zp_reflection`: signed RGB contribution and history depth | `previous`, depth, surface, `zp_reflection_previous` |
 | 5 | `end_rift.wgsl` | chain | `previous`, `zp_reflection`, depth |
 | 6 | `compute/exposure_histogram.wgsl` | `zp_luma_tiles` | `previous` |
 | 7 | `compute/exposure_resolve.wgsl` | `zp_exposure` | `zp_luma_tiles`, `zp_exposure_previous` |

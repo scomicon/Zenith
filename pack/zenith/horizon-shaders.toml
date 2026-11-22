@@ -330,6 +330,26 @@ sprites = ["block/amethyst_block", "block/budding_amethyst", "block/amethyst_clu
 id = "honey"
 sprites = ["block/honey_block_*"]
 
+# Opaque waxy / bony / snowy solids that scatter light below the surface (screen-space SSS in post/compose.wgsl).
+[[tags]]
+id = "sss"
+sprites = [
+    "block/snow",
+    "block/powder_snow",
+    "block/bone_block_side",
+    "block/bone_block_top",
+    "block/honeycomb_block",
+    "block/candle",
+    "block/candle_lit",
+    "block/*_candle",
+    "block/*_candle_lit",
+    "block/cake_top",
+    "block/cake_side",
+    "block/cake_bottom",
+    "block/melon_side",
+    "block/melon_top",
+]
+
 # ---------------------------------------------------------------------------
 # Material IDs (first match wins -> MaterialInput.material / VertexInput.material)
 # ---------------------------------------------------------------------------
@@ -754,6 +774,25 @@ name = "Surface Reflections (SSR)"
 description = "Screen-space reflections of light sources and terrain on metals, gems, polished blocks, and rain puddles."
 type = "bool"
 default = true
+resets = "view"
+
+[[options]]
+id = "screen_sss"
+name = "Subsurface Scattering"
+description = "Screen-space light diffusion under the surface of snow, bone, wax, honeycomb and cake: red light travels farthest, blue the least."
+type = "bool"
+default = true
+resets = "view"
+
+[[options]]
+id = "sss_strength"
+name = "Subsurface strength"
+description = "Blend of the diffused light into snow, bone, wax and similar solids."
+type = "float"
+default = 1.0
+min = 0.0
+max = 1.5
+step = 0.05
 resets = "view"
 
 [[options]]
@@ -1295,6 +1334,8 @@ items = [
     "displacement_cells",
     "rain_wetness",
     "foliage_sss",
+    "screen_sss",
+    "sss_strength",
     "snow_sand_sparkle",
 ]
 

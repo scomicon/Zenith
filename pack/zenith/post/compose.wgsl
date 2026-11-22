@@ -28,9 +28,67 @@ override volumetric_light: f32 = 0.6;
 override contact_shadows: bool = true;
 override quality_mode: u32 = 1u;
 override atmospheric_fog: f32 = 1.0;
+override screen_sss: bool = true;
+override sss_strength: f32 = 1.0;
 
 const ZP_AO_POWER: f32 = 1.6;
 const ZP_CONTACT_STEPS: vec3<i32> = vec3<i32>(8, 12, 16);
+
+const ZP_SSS_TAPS: i32 = 8;
+const ZP_SSS_CLASS: f32 = 0.45; // scene_surface.data of snow, bone, wax, honeycomb and cake
+const ZP_SSS_WIDTH: f32 = 0.20; // world-space scatter radius of the red lobe, in blocks
+const ZP_SSS_MAX_PX: f32 = 18.0;
+
+// Screen-space subsurface scattering (Jimenez et al., "Separable Subsurface Scattering", CGF 2015, and
+// Jimenez, Zsolnai et al., SIGGRAPH 2012 profile idea): the lit colour of neighbouring pixels of the same
+// material is gathered with a per-channel Gaussian whose width is red > green > blue, and the kernel radius is
+// the world-space scatter distance projected into pixels. A spiral of 8 taps rotated by interleaved gradient
+// noise stands in for the two separable passes, which the 12-pass raster limit has no room for.
+fn zp_screen_sss(input: PostInput, colour: vec3<f32>, dist: f32) -> vec3<f32> {
+    if (!screen_sss || sss_strength <= 0.0 || frame.eye_in != 0u) {
+        return colour;
+    }
+    let surf = surface_at(vec2<i32>(input.pixel));
+    if (!surf.present || abs(surf.data - ZP_SSS_CLASS) > 0.03) {
+        return colour;
+    }
+    let px_per_block = frame.projection[1][1] * 0.5 * frame.resolution.y / max(dist, 0.5);
+    let radius = min(ZP_SSS_WIDTH * px_per_block, ZP_SSS_MAX_PX);
+    let fade = smoothstep(1.2, 3.5, radius);
+    if (fade <= 0.001) {
+        return colour;
+    }
+    let dims = vec2<f32>(textureDimensions(previous));
+    let max_px = vec2<i32>(dims) - vec2<i32>(1);
+    let profile = vec3<f32>(1.0, 0.56, 0.30) * radius; // per-channel Gaussian sigma in pixels
+    let inv_two_var = vec3<f32>(0.5) / max(profile * profile * 0.36, vec3<f32>(1e-3));
+    let spin = zn_ign(input.pixel, 0u) * 6.2831853;
+
+    var accum = colour;
+    var wsum = vec3<f32>(1.0);
+    for (var i = 0; i < ZP_SSS_TAPS; i = i + 1) {
+        let r = radius * sqrt((f32(i) + 0.5) / f32(ZP_SSS_TAPS));
+        let a = f32(i) * 2.3999632 + spin;
+        let tap = clamp(vec2<i32>(input.pixel + vec2<f32>(cos(a), sin(a)) * r), vec2<i32>(0), max_px);
+        let tap_surf = surface_at(tap);
+        if (!tap_surf.present || abs(tap_surf.data - ZP_SSS_CLASS) > 0.03) {
+            continue;
+        }
+        let tap_depth = depth_at((vec2<f32>(tap) + vec2<f32>(0.5)) / dims);
+        if (tap_depth <= 0.0) {
+            continue;
+        }
+        let tap_dist = length(view_position((vec2<f32>(tap) + vec2<f32>(0.5)) / dims, tap_depth));
+        let depth_w = 1.0 - smoothstep(0.04, 0.30 + 0.02 * dist, abs(tap_dist - dist));
+        let flat_w = smoothstep(0.35, 0.85, dot(normalize(tap_surf.normal), normalize(surf.normal)));
+        let w = exp(-vec3<f32>(r * r) * inv_two_var) * (depth_w * flat_w);
+        let tap_col = clamp(textureLoad(previous, tap, 0).rgb, vec3<f32>(0.0), vec3<f32>(8.0));
+        accum = accum + tap_col * w;
+        wsum = wsum + w;
+    }
+    let diffused = accum / max(wsum, vec3<f32>(1e-4));
+    return mix(colour, diffused, clamp(0.85 * sss_strength * fade, 0.0, 1.0));
+}
 
 // J. Jimenez, X. Wu, A. Pesce, A. Jarosz, SIGGRAPH 2016: Multi-bounce GTAO approximation.
 fn zp_gtao_multibounce(visibility: f32, albedo: vec3<f32>) -> vec3<f32> {
@@ -518,6 +576,8 @@ fn post(input: PostInput) -> vec4<f32> {
         scene_point = P;
         let dist = length(P);
         scene_distance = dist;
+
+        colour = zp_screen_sss(input, colour, dist);
 
         if (ao_strength > 0.0) {
             let visibility = pow(zp_ao_filtered(input.uv, dist), ZP_AO_POWER);

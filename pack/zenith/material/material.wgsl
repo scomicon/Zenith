@@ -112,6 +112,8 @@ fn material(input: MaterialInput) -> Surface {
             surface_data = -clamp(surf.metallic, 0.1, 1.0);
         } else if (input.tags & TAG_GEM) != 0u {
             surface_data = 0.25;
+        } else if (input.tags & TAG_SSS) != 0u {
+            surface_data = 0.45; // Screen-space subsurface class; every `data > 0.5` guard still treats it as plain terrain.
         }
         // Pass geometric normal to scene_surface so post-process GTAO & planar SSR stay noise-free.
         set_surface(mat_safe_normalize(input.normal), surf.smoothness, surface_data);

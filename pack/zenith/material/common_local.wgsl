@@ -62,6 +62,7 @@ const TAG_COPPER_WEATHERED: u32 = 1u << 15u;
 const TAG_COPPER_OXIDIZED: u32 = 1u << 16u;
 const TAG_AMETHYST: u32       = 1u << 17u;
 const TAG_HONEY: u32          = 1u << 18u;
+const TAG_SSS: u32            = 1u << 19u;
 const TAG_COPPER_FINISH: u32  = TAG_COPPER_FRESH | TAG_COPPER_EXPOSED | TAG_COPPER_WEATHERED | TAG_COPPER_OXIDIZED;
 const TAG_SOLID_SCATTER: u32  = TAG_ICE | TAG_HONEY;
 

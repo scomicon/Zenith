@@ -5,7 +5,36 @@ override ssr_enabled: bool = true;
 override temporal_ssr: bool = false;
 override quality_mode: u32 = 1u; // 0 = Performance, 1 = Balanced, 2 = Quality (manifest order)
 
-const ZP_SSR_STEPS: vec3<i32> = vec3<i32>(24, 36, 48);
+const ZP_SSR_STEPS: vec3<i32> = vec3<i32>(40, 64, 96); // DDA samples per ray by quality_mode
+const ZP_SSR_STEPS_MAX: i32 = 96;
+const ZP_SSR_MIN_STRIDE: f32 = 1.5; // pixels
+const ZP_SSR_MAX_RAY: f32 = 96.0;
+
+struct ZpSsrRay {
+    p0: vec2<f32>,
+    p1: vec2<f32>,
+    k0: f32,
+    k1: f32,
+    z0: f32,
+    z1: f32,
+    q0: vec3<f32>,
+    q1: vec3<f32>,
+}
+
+struct ZpSsrPoint {
+    uv: vec2<f32>,
+    ndc_z: f32,
+    q: vec3<f32>,
+}
+
+fn zp_ssr_point(ray: ZpSsrRay, s: f32) -> ZpSsrPoint {
+    let k = mix(ray.k0, ray.k1, s);
+    var pt: ZpSsrPoint;
+    pt.uv = mix(ray.p0, ray.p1, s);
+    pt.ndc_z = mix(ray.z0, ray.z1, s);
+    pt.q = mix(ray.q0, ray.q1, s) / max(k, 1e-5);
+    return pt;
+}
 
 fn zp_ssr_sample_color(uv: vec2<f32>, smoothness: f32) -> vec3<f32> {
     let dims = vec2<f32>(textureDimensions(previous));
@@ -49,83 +78,101 @@ fn post(input: PostInput) -> vec4<f32> {
         return vec4<f32>(0.0);
     }
 
-    let steps = ZP_SSR_STEPS[min(quality_mode, 2u)];
+    let max_samples = ZP_SSR_STEPS[min(quality_mode, 2u)];
     let dims = vec2<f32>(textureDimensions(previous));
     let Q0 = P + N * 0.06;
     let jitter = zn_ign(input.pixel, select(0u, frame.frame_index % 64u, temporal_ssr));
-    var t = 0.08 + jitter * 0.06;
-    var t_prev = 0.0;
-    var prev_behind = false;
     var hit = false;
     var hit_uv = input.uv;
     var has_sky = false;
     var sky_uv = input.uv;
 
-    for (var i = 0; i < steps; i = i + 1) {
-        let Q = Q0 + R * t;
-        let clip = frame.projection * (frame.view * vec4<f32>(Q, 1.0));
-        if (clip.w <= 0.05) {
-            break;
-        }
-        let ndc_xy = clip.xy / clip.w;
-        let ray_uv = vec2<f32>(ndc_xy.x * 0.5 + 0.5, 0.5 - ndc_xy.y * 0.5);
-        if (any(ray_uv <= vec2<f32>(0.001)) || any(ray_uv >= vec2<f32>(0.999))) {
-            break;
-        }
+    // Screen-space DDA: the ray is projected once, then walked in near-uniform pixel strides with
+    // perspective-correct interpolation of 1/w, z/w and Q/w (McGuire & Mara 2014).
+    let clip0 = frame.projection * (frame.view * vec4<f32>(Q0, 1.0));
+    let dir_w = (frame.projection * (frame.view * vec4<f32>(R, 0.0))).w;
+    var ray_len = clamp(dist + 24.0, 24.0, ZP_SSR_MAX_RAY);
+    if (dir_w < 0.0) {
+        ray_len = max(min(ray_len, (clip0.w - 0.12) / -dir_w), 0.0);
+    }
+    var n_samples = 0;
+    let Q1 = Q0 + R * ray_len;
+    let clip1 = frame.projection * (frame.view * vec4<f32>(Q1, 1.0));
+    var ray: ZpSsrRay;
+    ray.k0 = 1.0 / clip0.w;
+    ray.k1 = 1.0 / max(clip1.w, 0.05);
+    ray.p0 = vec2<f32>(clip0.x * ray.k0 * 0.5 + 0.5, 0.5 - clip0.y * ray.k0 * 0.5);
+    ray.p1 = vec2<f32>(clip1.x * ray.k1 * 0.5 + 0.5, 0.5 - clip1.y * ray.k1 * 0.5);
+    ray.z0 = clip0.z * ray.k0;
+    ray.z1 = clip1.z * ray.k1;
+    ray.q0 = Q0 * ray.k0;
+    ray.q1 = Q1 * ray.k1;
 
-        let dt = clamp(0.06 + t * 0.065, 0.06, 1.25);
-        let ndc_z = clip.z / clip.w;
-        let sd = depth_at(ray_uv);
+    // Stop at the screen border instead of spending samples off-screen.
+    let dp = ray.p1 - ray.p0;
+    var s_end = 1.0;
+    if (abs(dp.x) > 1e-6) {
+        s_end = min(s_end, (select(0.998, 0.002, dp.x < 0.0) - ray.p0.x) / dp.x);
+    }
+    if (abs(dp.y) > 1e-6) {
+        s_end = min(s_end, (select(0.998, 0.002, dp.y < 0.0) - ray.p0.y) / dp.y);
+    }
+    s_end = clamp(s_end, 0.0, 1.0);
+    let px_len = length(dp * s_end * dims);
+    if (clip0.w > 0.12 && ray_len > 0.1 && px_len >= 1.5) {
+        n_samples = min(max_samples, i32(ceil(px_len / ZP_SSR_MIN_STRIDE)));
+    }
+
+    var s_prev = 0.0;
+    var s_hit = 0.0;
+    var prev_behind = false;
+    var q_prev = Q0;
+    for (var i = 0; i < ZP_SSR_STEPS_MAX; i = i + 1) {
+        if (i >= n_samples) {
+            break;
+        }
+        let s = s_end * (f32(i) + 0.15 + jitter * 0.85) / f32(n_samples);
+        let pt = zp_ssr_point(ray, s);
+        let sd = depth_at(pt.uv);
         if (sd <= 0.0) {
             has_sky = true;
-            sky_uv = ray_uv;
+            sky_uv = pt.uv;
             prev_behind = false;
         } else {
-            let is_behind = ndc_z < sd;
+            let is_behind = pt.ndc_z < sd;
             if (is_behind) {
-                let S = view_position(ray_uv, sd);
-                let delta = length(Q) - length(S);
-                let thickness = clamp(0.16 + dt * 0.85, 0.16, 0.72);
+                let S = view_position(pt.uv, sd);
+                let delta = length(pt.q) - length(S);
+                let thickness = clamp(0.16 + length(pt.q - q_prev) * 0.85, 0.16, 0.72);
                 if (delta > -0.02 && delta < thickness && (!prev_behind || delta < 0.25) && dot(S - P, N) > 0.05) {
-                    let hit_surf = surface_at(vec2<i32>(ray_uv * dims));
+                    let hit_surf = surface_at(vec2<i32>(pt.uv * dims));
                     let front_face = !hit_surf.present || dot(normalize(hit_surf.normal), R) <= 0.20;
                     if (front_face) {
                         hit = true;
-                        hit_uv = ray_uv;
+                        hit_uv = pt.uv;
+                        s_hit = s;
                         break;
                     }
                 }
             }
             prev_behind = is_behind;
         }
-
-        t_prev = t;
-        t = t + dt;
+        s_prev = s;
+        q_prev = pt.q;
     }
 
     if (hit) {
-        var lo = t_prev;
-        var hi = t;
-        for (var b = 0; b < 4; b = b + 1) {
+        var lo = s_prev;
+        var hi = s_hit;
+        for (var b = 0; b < 5; b = b + 1) {
             let mid = 0.5 * (lo + hi);
-            let Qm = Q0 + R * mid;
-            let clip_m = frame.projection * (frame.view * vec4<f32>(Qm, 1.0));
-            if (clip_m.w <= 0.05) {
-                hi = mid;
-                continue;
-            }
-            let uv_m = vec2<f32>(clip_m.x / clip_m.w * 0.5 + 0.5, 0.5 - clip_m.y / clip_m.w * 0.5);
-            if (any(uv_m <= vec2<f32>(0.001)) || any(uv_m >= vec2<f32>(0.999))) {
-                hi = mid;
-                continue;
-            }
-            let sd_m = depth_at(uv_m);
-            let z_m = clip_m.z / clip_m.w;
-            if (sd_m > 0.0 && z_m < sd_m) {
-                let S_m = view_position(uv_m, sd_m);
-                let d_m = length(Qm) - length(S_m);
+            let pm = zp_ssr_point(ray, mid);
+            let sd_m = depth_at(pm.uv);
+            if (sd_m > 0.0 && pm.ndc_z < sd_m) {
+                let S_m = view_position(pm.uv, sd_m);
+                let d_m = length(pm.q) - length(S_m);
                 if (d_m < 0.72 && dot(S_m - P, N) > 0.05) {
-                    hit_uv = uv_m;
+                    hit_uv = pm.uv;
                     hi = mid;
                 } else {
                     lo = mid;
