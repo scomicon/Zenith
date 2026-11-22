@@ -240,3 +240,9 @@ Status: `ok` written from the sources, `rewritten` rewritten from sources, `pend
 | `post/hiz.wgsl`, `post/ssr.wgsl` | One 480x270 max-depth level and an empty-space leap in the SSR march | Tevs, Ihrke, Seidel, I3D 2008 (max pyramid); Grossman, GPU Pro 5, 2014 (Hi-Z screen-space tracing) | A pack may declare 8 resources and chain 12 post passes, so there is one compute level (480x270); it takes the nearest depth over a 3x3 neighbourhood of 4x4 tiles. The march leaps 8 steps when four samples spaced 2 steps and at most 8 px apart are all in front of that value; always on with SSR (a pack may declare only 64 options) |
 | `post/sss_screen.wgsl`, `material/material.wgsl` | Screen-space diffusion with depth-aware weights, per-channel Gaussian widths | Jimenez et al., ACM TAP 2009 and CGF 2015; d'Eon, Luebke, GPU Gems 3, 2007 | Surface data class `0.45` marks the material (`subsurface > 0.30`, not foliage, metal or gem), widths `(0.10, 0.045, 0.025)` blocks, 8 / 12 / 16 golden-angle taps with IGN rotation, blur amount 0.38-0.50 so texture detail survives; gated by `body_sss` |
 
+### Volumetric cloud ray march
+
+| File | Algorithm / change | Sources | Own choices |
+|---|---|---|---|
+| `sky/sky.wgsl` | The eight single-sample slabs are replaced by a 32-step ray march through the whole cloud volume | A. Schneider, N. Vos, SIGGRAPH 2015 | Jittered front-to-back samples at 3D positions, segment capped at 7000 blocks, early exit below 2% transmission, dense flat bases and eroded domed tops via a height bias in `sky_cloud_density`, three light-march taps per lit sample |
+

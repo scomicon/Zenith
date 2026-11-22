@@ -180,7 +180,7 @@ fn sky_cirrus_layer(d: vec3<f32>, background: vec3<f32>, sun: vec3<f32>, dayligh
 // per-ray segment length. That removes the ray-dependent sample jitter.
 const SKY_CLOUD_BASE: f32 = 150.0;
 const SKY_CLOUD_TOP: f32 = 240.0;
-const SKY_CLOUD_SLABS: u32 = 8u;
+const SKY_CLOUD_STEPS: u32 = 32u;
 const SKY_CLOUD_RANGE: f32 = 12000.0;
 
 // Band-limited fBm of value noise (same octave layout as zn_fbm2, 4 octaves).
@@ -224,7 +224,7 @@ fn sky_cloud_density(p: vec3<f32>, coverage: f32, footprint_blocks: f32, wind: v
     let threshold = mix(1.0, 0.13, coverage);
     // Soft ramp instead of the former x3.5 clamp: a small change of the sample
     // position no longer flips a sample between empty and opaque.
-    let x = shape - threshold - (1.0 - detail) * 0.12;
+    let x = shape - threshold - (1.0 - detail) * 0.12 + (0.5 - height) * 0.16;
     return smoothstep(0.0, 0.45, x) * envelope;
 }
 
@@ -236,7 +236,6 @@ fn sky_cloud_layer(d: vec3<f32>, background: vec3<f32>, sun: vec3<f32>, daylight
     if (coverage <= 0.0) { return background; }
     let origin = frame.camera_position;
     let inv_dy = 1.0 / d.y;
-    let slab_h = (SKY_CLOUD_TOP - SKY_CLOUD_BASE) / f32(SKY_CLOUD_SLABS);
     // Approximate angular size of one pixel (about 1.5 / height radians).
     let pixel = 1.5 / max(frame.resolution.y, 1.0);
     let footprint_scale = pixel / max(abs(d.y), 0.02);
@@ -250,39 +249,33 @@ fn sky_cloud_layer(d: vec3<f32>, background: vec3<f32>, sun: vec3<f32>, daylight
     // A closed wind orbit avoids a discontinuity when frame.time wraps at 3600s.
     let angle = frame.time * (2.0 * SKY_PI / 3600.0);
     let wind = vec2<f32>(sin(angle), 1.0 - cos(angle)) * 3.5;
-    for (var k = 0u; k < SKY_CLOUD_SLABS; k++) {
-        // Front to back: ascending heights when looking up, descending when looking down.
-        let i = select(SKY_CLOUD_SLABS - 1u - k, k, d.y > 0.0);
-        let h0 = SKY_CLOUD_BASE + f32(i) * slab_h;
-        let ta = (h0 - origin.y) * inv_dy;
-        let tb = (h0 + slab_h - origin.y) * inv_dy;
-        // Part of the slab in front of the camera, capped at the cloud range.
-        // Clamping (not skipping) keeps this continuous while the camera
-        // moves through the layer.
-        let t0 = min(max(min(ta, tb), 0.0), SKY_CLOUD_RANGE);
-        let t1 = min(max(max(ta, tb), 0.0), SKY_CLOUD_RANGE);
-        let length_in_slab = t1 - t0;
-        if (length_in_slab <= 0.0) { continue; }
-        let distance = 0.5 * (t0 + t1);
+    // Ray march through the cloud volume (Schneider/Vos 2015): jittered samples at 3D positions front to back,
+    // so the layer reads as one volume instead of stacked sheets.
+    let ta = (SKY_CLOUD_BASE - origin.y) * inv_dy;
+    let tb = (SKY_CLOUD_TOP - origin.y) * inv_dy;
+    let t_in = clamp(min(ta, tb), 0.0, SKY_CLOUD_RANGE);
+    let t_out = min(clamp(max(ta, tb), 0.0, SKY_CLOUD_RANGE), t_in + 7000.0);
+    if t_out - t_in <= 0.0 { return background; }
+    let dt = (t_out - t_in) / f32(SKY_CLOUD_STEPS);
+    let jitter = zn_hash21(d.xz * 953.0 + vec2<f32>(d.y * 331.0, 17.0));
+    for (var k = 0u; k < SKY_CLOUD_STEPS; k++) {
+        if transmission < 0.02 { break; }
+        let distance = t_in + (f32(k) + jitter) * dt;
         let p = origin + d * distance;
         let footprint = distance * footprint_scale;
         let density = sky_cloud_density(p, coverage, footprint, wind);
-        if density <= 0.0 { continue; }
+        if density <= 0.002 { continue; }
         let height = zn_remap(p.y, SKY_CLOUD_BASE, SKY_CLOUD_TOP, 0.0, 1.0);
         // Beer-powder multi-scattering & silver-lining HG phase; Schneider/Vos 2015.
-        let alpha = 1.0 - exp(-density * length_in_slab * 0.035);
+        let alpha = 1.0 - exp(-density * dt * 0.035);
+        if alpha < 0.003 { continue; }
         let h_amb = ambient * mix(0.62, 1.18, height);
         var illumination = h_amb;
         if cloud_sun > 0.0 {
-            var sun_tau = sky_cloud_density(p + sun * 45.0, coverage, footprint, wind) * 2.2;
-            {
-                // Extra light-march taps at growing distances (Schneider/Vos 2015, cone-sampled light march):
-                // clouds now self-shadow across their whole depth instead of one 45-block probe.
-                let jitter = zn_ign(d.xz * 4096.0 + vec2<f32>(f32(i)), 0u);
-                sun_tau = sun_tau * 0.5
-                    + sky_cloud_density(p + sun * (22.0 + 14.0 * jitter), coverage, footprint, wind) * 1.1
-                    + sky_cloud_density(p + sun * (90.0 + 30.0 * jitter), coverage, footprint, wind) * 1.4;
-            }
+            // Three light-march taps at growing distances (cone-sampled light march): the whole depth self-shadows.
+            let sun_tau = (sky_cloud_density(p + sun * 45.0, coverage, footprint, wind) * 1.1
+                + sky_cloud_density(p + sun * (22.0 + 14.0 * jitter), coverage, footprint, wind) * 0.55
+                + sky_cloud_density(p + sun * (90.0 + 30.0 * jitter), coverage, footprint, wind) * 1.4);
             let multi = max(exp(-sun_tau), exp(-sun_tau * 0.28) * 0.48);
             let powder = 1.0 - exp(-density * 3.8);
             let scatter = multi * mix(1.0, 0.55 + 0.75 * powder, smoothstep(-0.15, 0.55, mu));
