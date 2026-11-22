@@ -1,37 +1,102 @@
 // src: James Kajiya, The Rendering Equation, SIGGRAPH 1986 (cosine-distributed diffuse transport); Horizon Shader API 0.2 (camera-relative opaque depth, surface buffer, ray scene and kept textures).
 
-// A fixed quadrature avoids temporal noise. Rotate the second stratum relative to the first.
-fn zp_rt_diffuse_direction(n: vec3<f32>, index: u32, second: bool) -> vec3<f32> {
+// Stochastic one-bounce diffuse GI, accumulated over time (Kajiya 1986; Schied et al., SVGF, HPG 2017 for the
+// reprojected history). The raster pass already adds a sky ambient term that assumes the whole hemisphere is open
+// (`mat_sky_ambient_color`). What is stored here is the difference between the traced hemisphere and that
+// assumption: light from lit nearby surfaces (colour bleeding, emissive blocks) and the shortfall where the sky is
+// blocked (contact shadowing, rooms), with the sky share estimated from the rays that escaped.
+override ambient_strength: f32 = 1.0;
+override gi_strength: f32 = 1.0;
+
+const ZP_GI_RAYS: u32 = 3u;
+const ZP_GI_RANGE: f32 = 40.0;
+
+fn zp_rt_hash(p: vec2<i32>) -> u32 {
+    var h = u32(p.x) * 747796405u + u32(p.y) * 2891336453u + 2891336453u;
+    h = ((h >> ((h >> 28u) + 4u)) ^ h) * 277803737u;
+    return (h >> 22u) ^ h;
+}
+
+// Per-texel offset plus the R2 sequence over frames and rays: stratified in time, decorrelated in space.
+fn zp_rt_rand2(texel: vec2<i32>, ray: u32) -> vec2<f32> {
+    let h = zp_rt_hash(texel);
+    let offset = vec2<f32>(f32(h & 0xffffu), f32(h >> 16u)) / 65536.0;
+    let k = f32(frame.frame_index * ZP_GI_RAYS + ray);
+    return fract(offset + k * vec2<f32>(0.7548776662, 0.5698402909));
+}
+
+fn zp_rt_cosine_direction(n: vec3<f32>, u: vec2<f32>) -> vec3<f32> {
     let reference = select(vec3<f32>(0.0, 1.0, 0.0), vec3<f32>(1.0, 0.0, 0.0), abs(n.y) > 0.96);
     let t = normalize(cross(reference, n));
     let b = cross(n, t);
-    let phi = f32(index) * 2.39996323 + select(0.31, 1.48, second);
-    let radius = sqrt((f32(index) + 0.72) / 4.0);
-    return n * sqrt(max(0.0, 1.0 - radius * radius)) + (t * cos(phi) + b * sin(phi)) * radius;
+    let r = sqrt(u.x);
+    let phi = 6.2831853 * u.y;
+    return normalize(t * (r * cos(phi)) + b * (r * sin(phi)) + n * sqrt(max(0.0, 1.0 - u.x)));
 }
 
-fn zp_rt_diffuse_bounce(p: vec3<f32>, n: vec3<f32>) -> vec3<f32> {
-    let origin = p + n * 0.055;
-    var radiance = vec3<f32>(0.0);
-    for (var i = 0u; i < 3u; i++) {
-        let direction = zp_rt_diffuse_direction(n, i, false);
-        let first = trace(origin, direction, zn_rt_reach(origin, direction, 6.0));
-        // Zenith's block light already accounts for direct light from these emitters.
-        // Sparse fixed directions would paint their full-resolution texture on diffuse surfaces.
-        if first.distance < 0.0 || zn_rt_hit_emission(first) > 0.001 {
-            continue;
-        }
-        var outgoing = zn_rt_hit_radiance(first, 1.0);
-        let next = zp_rt_diffuse_direction(first.normal, (i + 1u) % 4u, true);
-        let next_origin = first.position + first.normal * 0.045;
-        let second = trace(next_origin, next, zn_rt_reach(next_origin, next, 4.0));
-        if second.distance >= 0.0 && zn_rt_hit_emission(second) <= 0.001 {
-            let attenuation = 0.45 / (1.0 + 0.22 * second.distance * second.distance);
-            outgoing += zn_rt_hit_albedo(first) * zn_rt_hit_radiance(second, 1.0) * attenuation;
-        }
-        radiance += outgoing / (1.0 + 0.16 * first.distance * first.distance);
+// The Overworld hemisphere ambient of material/lighting.wgsl `mat_sky_ambient_color`, without its sky-light factor
+// and climate LUT: the term the raster pass adds and this pass corrects.
+fn zp_rt_ambient(n: vec3<f32>) -> vec3<f32> {
+    let sun_elev = frame.sun_direction.y;
+    let day_w = smoothstep(-0.08, 0.16, sun_elev);
+    let hemi_t = clamp(n.y * 0.5 + 0.5, 0.0, 1.0);
+    let hemi_scale = mix(0.76, 1.08, hemi_t);
+    let sky_tint = max(frame.sky_color, vec3<f32>(0.015, 0.022, 0.042));
+    let storm = clamp(frame.rain * 0.72 + frame.thunder * 0.28, 0.0, 1.0);
+    let sunset_f = exp(-pow(max(sun_elev, -0.04) * 5.2, 2.0));
+    let bounce_day = smoothstep(-0.02, 0.22, sun_elev) * (1.0 - storm * 0.72);
+    let warm = mix(vec3<f32>(0.135, 0.122, 0.095), vec3<f32>(0.175, 0.095, 0.042), sunset_f);
+    let sun_dir = normalize(frame.sun_direction);
+    let sun_az = 0.88 + 0.22 * clamp(dot(n, sun_dir) * 0.5 + 0.5, 0.0, 1.0);
+    let luma = dot(sky_tint, vec3<f32>(0.2126, 0.7152, 0.0722));
+    let ground = mix(vec3<f32>(luma), sky_tint, 0.50) * 0.34 + warm * bounce_day;
+    let top = mix(vec3<f32>(luma), sky_tint, 0.72) * 0.68 + vec3<f32>(0.022, 0.029, 0.044);
+    let dome = mix(ground, top, hemi_t) * hemi_scale * sun_az;
+    let night = mix(vec3<f32>(0.032, 0.044, 0.072), vec3<f32>(0.0), day_w);
+    return max(dome, night) * ambient_strength;
+}
+
+// A traced hit lit the way the raster pass would light it: hemisphere ambient by its sky light, block light, and
+// the sun with a shadow ray of its own.
+fn zp_rt_hit_lit(hit: RayHit) -> vec3<f32> {
+    var visible = 0.0;
+    let day = smoothstep(-0.04, 0.16, frame.sun_direction.y);
+    let facing = dot(hit.normal, frame.sun_direction);
+    if frame.sun_direction.y > 0.03 && facing > 0.02 {
+        let o = hit.position + hit.normal * 0.04;
+        let r = zn_rt_reach(o, frame.sun_direction, 48.0);
+        visible = select(1.0, 0.0, r > 0.1 && trace_any(o, frame.sun_direction, r));
     }
-    return radiance * 0.20; // Artistic weight for filling the raster ambient term.
+    let weather = 1.0 - clamp(frame.rain * 0.65 + frame.thunder * 0.22, 0.0, 0.8);
+    let sun_color = mix(vec3<f32>(1.0, 0.52, 0.25), vec3<f32>(1.0, 0.94, 0.84),
+        smoothstep(0.04, 0.42, frame.sun_direction.y));
+    let skylight = clamp(hit.light.y, 0.0, 1.0);
+    let ambient = zp_rt_ambient(hit.normal) * pow(skylight, 1.35);
+    let direct = sun_color * (max(facing, 0.0) * day * weather * pow(skylight, 1.6) * visible * 0.94);
+    let local = vec3<f32>(1.0, 0.57, 0.25) * pow(clamp(hit.light.x, 0.0, 1.0), 2.2) * 0.57;
+    let albedo = zn_rt_hit_albedo(hit);
+    return albedo * (ambient + direct + local) + albedo * (zn_rt_hit_emission(hit) * 1.5);
+}
+
+fn zp_rt_gi(p: vec3<f32>, n: vec3<f32>, texel: vec2<i32>) -> vec3<f32> {
+    if frame.dimension != 0 { return vec3<f32>(0.0); }
+    let origin = p + n * 0.05;
+    var bounce = vec3<f32>(0.0);
+    var escaped = 0.0;
+    for (var i = 0u; i < ZP_GI_RAYS; i++) {
+        let dir = zp_rt_cosine_direction(n, zp_rt_rand2(texel, i));
+        let reach = zn_rt_reach(origin, dir, ZP_GI_RANGE);
+        if reach <= 0.4 { escaped += 1.0; continue; }
+        let hit = trace(origin, dir, reach);
+        if hit.distance < 0.0 { escaped += 1.0; continue; }
+        // Falloff with the path length, so a far wall does not light a surface like a near one.
+        bounce += min(zp_rt_hit_lit(hit) / (1.0 + 0.012 * hit.distance * hit.distance), vec3<f32>(3.0));
+    }
+    let count = f32(ZP_GI_RAYS);
+    let sky_share = escaped / count;
+    // The raster ambient assumed an open hemisphere (scaled by the vertex sky light); the traced share replaces it.
+    let shortfall = zp_rt_ambient(n) * (sky_share - pow(sky_share, 1.35));
+    return (bounce / count + shortfall) * gi_strength;
 }
 
 struct ZpRtWindowProbe {
@@ -220,10 +285,22 @@ fn compute(input: ComputeInput) {
         if depth > 0.0 && surface.present && surface.data < 0.5 {
             let p = view_position(uv, depth);
             let distance = length(p);
-            let fade = 1.0 - smoothstep(16.0, 28.0, distance);
+            let fade = 1.0 - smoothstep(30.0, 56.0, distance);
             if fade > 0.0 && max(abs(p.x), abs(p.z)) + 12.0 < frame.ray_distance {
-                let light = zp_rt_diffuse_bounce(p, normalize(surface.normal));
-                result = vec4<f32>(min(light * fade, vec3<f32>(0.85)), distance);
+                var light = zp_rt_gi(p, normalize(surface.normal), pixel) * fade;
+                let prev_uv = zp_previous_uv(p);
+                if all(prev_uv >= vec2<f32>(0.0)) && all(prev_uv < vec2<f32>(1.0)) {
+                    let dims = vec2<i32>(diffuse_size);
+                    let prior = textureLoad(zp_rt_bounce_previous, min(vec2<i32>(prev_uv * vec2<f32>(dims)), dims - 1), 0);
+                    let motion = length(frame.camera_motion);
+                    let keep = mix(0.95, 0.80, smoothstep(0.0, 0.08, motion));
+                    if prior.a > 0.0 {
+                        let expected = length(p + frame.camera_motion);
+                        let valid = 1.0 - smoothstep(0.05, 0.12 + expected * 0.008, abs(prior.a - expected));
+                        light = mix(light, clamp(prior.rgb, light - vec3<f32>(0.8), light + vec3<f32>(0.8)), keep * valid);
+                    }
+                }
+                result = vec4<f32>(clamp(light, vec3<f32>(-1.5), vec3<f32>(3.0)), distance);
             }
         }
     }

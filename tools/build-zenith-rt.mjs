@@ -47,7 +47,7 @@ replaceOnce(manifest, 'name = "vlight"\nformat = "rgba16float"\nsize = [960, 540
   'name = "vlight"\nformat = "rgba16float"\nsize = [480, 270]');
 replaceOnce(manifest, '[[post]]\nfile = "post/volumetric.wgsl"\nfiles = ["post/reprojection.wgsl"]\nname = "Volumetric light"\noutput = "vlight"\nreads = ["vlight_previous"]', `[[post]]
 file = "compute/ray_bounce.wgsl"
-files = ["shared/ray_lighting.wgsl", "compute/ray_window_surface.wgsl"]
+files = ["post/reprojection.wgsl", "shared/ray_lighting.wgsl", "compute/ray_window_surface.wgsl"]
 name = "RT diffuse bounce and stained-glass light"
 compute = true
 dispatch = [480, 271, 1]
@@ -134,11 +134,11 @@ replaceOnce(reflection, '    let R = reflect(V_dir, N);', `    let R = reflect(V
     let ndotv = max(dot(N, -V_dir), 0.0);
     let traced = zp_rt_opaque_reflection(P, N, R, surf.smoothness, surf.data);
     let rt_delta = zp_resolve_reflection(base, traced.rgb, traced.a, ndotv, surf.data);
-    if traced.a >= 0.98 { return vec4<f32>(rt_delta, 0.0); }`);
-replaceOnce(reflection, '    if (dir_fade <= 0.001) {\n        return vec4<f32>(0.0);', '    if (dir_fade <= 0.001) {\n        return vec4<f32>(rt_delta, 0.0);');
+    if traced.a >= 0.98 { return zp_rt_out(P, rt_delta, traced.a); }`);
+replaceOnce(reflection, '    if (dir_fade <= 0.001) {\n        return vec4<f32>(0.0);', '    if (dir_fade <= 0.001) {\n        return zp_rt_out(P, rt_delta, traced.a);');
 replaceOnce(reflection, '    if (!hit && !(has_sky && surf.smoothness > 0.78 && R.y > -0.05)) {\n        return vec4<f32>(0.0);',
-  '    if (!hit && !(has_sky && surf.smoothness > 0.78 && R.y > -0.05)) {\n        return vec4<f32>(rt_delta, 0.0);');
-replaceOnce(reflection, '    if (refl_w <= 0.001) {\n        return vec4<f32>(0.0);', '    if (refl_w <= 0.001) {\n        return vec4<f32>(rt_delta, 0.0);');
+  '    if (!hit && !(has_sky && surf.smoothness > 0.78 && R.y > -0.05)) {\n        return zp_rt_out(P, rt_delta, traced.a);');
+replaceOnce(reflection, '    if (refl_w <= 0.001) {\n        return vec4<f32>(0.0);', '    if (refl_w <= 0.001) {\n        return zp_rt_out(P, rt_delta, traced.a);');
 {
   const text = files.get(reflection);
   const from = text.indexOf('fn zp_ssr_hiz_empty(');
@@ -152,7 +152,7 @@ const end = ssr.indexOf('    if !temporal_ssr', start);
 if (start < 0 || end < 0) throw new Error('Missing SSR lighting integration point');
 replaceOnce(reflection, ssr.slice(start, end), `    let hit_col = zp_ssr_sample_color(sample_uv, surf.smoothness, select(0.0, t, hit));
     let reflection_delta = zp_resolve_reflection(base, hit_col, refl_w, ndotv, surf.data) * (1.0 - traced.a) + rt_delta;
-    if traced.a > 0.001 { return vec4<f32>(reflection_delta, 0.0); }
+    if traced.a > 0.001 { return zp_rt_out(P, reflection_delta, traced.a); }
 `);
 
 replaceOnce('post/compose.wgsl', '    if (input.depth > 0.0 && (ao_strength > 0.0 || contact_shadows || atmospheric_fog > 0.001)) {',

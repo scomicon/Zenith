@@ -257,3 +257,11 @@ Status: `ok` written from the sources, `rewritten` rewritten from sources, `pend
 | File | Change | Basis |
 |---|---|---|
 | `sky/sky.wgsl`, `compute/optics_sources.wgsl`, `post/compose.wgsl`, `horizon-shaders.toml` | Removed `sky_bob_direction` and the `bob_sky_match` option. The sky is drawn along `input.direction` as the engine gives it, and the sun's lens-flare source is projected with the bobbed projection | Measured in game (nightly-2026-11-21 `8f83e5c`) with a world-fixed elevation line drawn in the sky stage while walking: the engine's direction stays within 1 px of the terrain (std 0.9 px), while the pack's extra bob moved it by 5 px with a 2.6 px spread, because the engine already applies the bob (`posed_view(pose)` in its sky pass) and the pack applied it a second time |
+
+### Zenith RT: global illumination, reflections, cloud cost
+
+| File | Algorithm / change | Sources | Own choices |
+|---|---|---|---|
+| `variants/zenith-rt/compute/ray_bounce.wgsl`, `post/ray_bounce_filter.wgsl` | Stochastic one-bounce diffuse GI with reprojected temporal accumulation, stored relative to the raster sky ambient | J. Kajiya, SIGGRAPH 1986; Schied et al., SVGF, HPG 2017; M. Roberts, "The Unreasonable Effectiveness of Quasirandom Sequences" (R2) | 3 rays per texel, range 40 blocks, per-texel hash plus R2 over frames, history 0.80-0.95 by camera motion with depth validity, hit radiance falloff `1 / (1 + 0.012 d^2)`, sky share from escaped rays, 4x4 Gaussian bilateral upsample reaching 58 blocks |
+| `variants/zenith-rt/post/ray_reflection.wgsl` | Stratified roughness-cone jitter with a minimum cone of 0.003 rad and temporal accumulation of the traced reflection | Whitted, CACM 1980; Schied et al., HPG 2017 | History 0.78-0.96 by camera motion, depth gated |
+| `sky/sky.wgsl` | Empty-space precheck at six heights, fewer slices for steep rays | Schneider, Vos, SIGGRAPH 2015 | Slices 24 / 36 / 48 by `quality_mode`, divided by 3 above slope 0.55 and by 2 above 0.30 |

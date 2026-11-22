@@ -271,7 +271,29 @@ fn sky_cloud_layer(d: vec3<f32>, background: vec3<f32>, sun: vec3<f32>, daylight
     // positions depend only on the ray's elevation, so they move continuously when the view bobs or turns: no
     // stepping along the ray, no per-pixel jitter, nothing that can pop or swim between frames. Each slice is
     // sampled once at the middle of the ray's path through it, front to back.
-    let steps = SKY_CLOUD_STEPS[min(quality_mode, 2u)];
+    // Empty-space skipping: the macro map is smooth, so if no cloud stands at six heights along the ray the full
+    // slice march finds none either, and clear sky costs six lookups instead of dozens.
+    var occupied = false;
+    let cover_threshold = mix(1.0, 0.13, coverage) - 0.10;
+    for (var j = 0u; j < 6u; j++) {
+        let level = (f32(j) + 0.5) / 6.0;
+        let t = clamp((SKY_CLOUD_BASE + level * (SKY_CLOUD_TOP - SKY_CLOUD_BASE) - origin.y) * inv_dy, 0.0, SKY_CLOUD_RANGE);
+        let q = origin + d * t;
+        let uv = q.xz * 0.003 + wind + vec2<f32>(level * 0.61, -level * 0.37);
+        if sky_cloud_fbm(uv, t * footprint_scale * 0.003) > cover_threshold {
+            occupied = true;
+            break;
+        }
+    }
+    if !occupied { return background; }
+    // A steep ray crosses the layer in a short path, so it needs fewer slices than a grazing one.
+    var steps = SKY_CLOUD_STEPS[min(quality_mode, 2u)];
+    let slope = abs(d.y);
+    if slope > 0.55 {
+        steps = max(steps / 3u, 8u);
+    } else if slope > 0.30 {
+        steps = max(steps / 2u, 12u);
+    }
     let slab_h = (SKY_CLOUD_TOP - SKY_CLOUD_BASE) / f32(steps);
     for (var k = 0u; k < steps; k++) {
         if transmission < 0.02 { break; }
@@ -297,13 +319,12 @@ fn sky_cloud_layer(d: vec3<f32>, background: vec3<f32>, sun: vec3<f32>, daylight
         if alpha < 0.003 { continue; }
         let h_amb = ambient * mix(0.40, 1.25, height);
         var illumination = h_amb;
-        if cloud_sun > 0.0 {
-            // Three light-march taps at growing distances (cone-sampled light march): the whole depth self-shadows.
+        if cloud_sun > 0.0 && density > 0.04 {
+            // Two light-march taps at growing distances (cone-sampled light march): the whole depth self-shadows.
             // The tap offsets are fixed per slice, so they do not depend on the view.
             let tap = fract(f32(i) * 0.618034);
-            let sun_tau = (sky_cloud_density(p + sun * 45.0, coverage, footprint, wind, false) * 1.1
-                + sky_cloud_density(p + sun * (22.0 + 14.0 * tap), coverage, footprint, wind, false) * 0.55
-                + sky_cloud_density(p + sun * (90.0 + 30.0 * tap), coverage, footprint, wind, false) * 1.4);
+            let sun_tau = (sky_cloud_density(p + sun * (30.0 + 12.0 * tap), coverage, footprint, wind, false) * 1.35
+                + sky_cloud_density(p + sun * (100.0 + 30.0 * tap), coverage, footprint, wind, false) * 1.5);
             let multi = max(exp(-sun_tau), exp(-sun_tau * 0.28) * 0.48);
             let powder = 1.0 - exp(-density * 3.8);
             let scatter = multi * mix(1.0, 0.55 + 0.75 * powder, smoothstep(-0.15, 0.55, mu));

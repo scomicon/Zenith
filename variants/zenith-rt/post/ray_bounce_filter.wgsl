@@ -3,7 +3,7 @@
 override rt_lighting: u32 = 0u;
 
 fn zp_rt_bounce_filtered(uv: vec2<f32>, distance: f32) -> vec3<f32> {
-    if rt_lighting != 2u || frame.has_ray_tracing == 0u || frame.eye_in != 0u || distance >= 28.0 {
+    if rt_lighting != 2u || frame.has_ray_tracing == 0u || frame.eye_in != 0u || distance >= 58.0 {
         return vec3<f32>(0.0);
     }
     let size = vec2<i32>(textureDimensions(zp_rt_bounce));
@@ -31,8 +31,8 @@ fn zp_rt_upsample_light(uv: vec2<f32>, distance: f32, dims: vec2<i32>, row_offse
     let base = vec2<i32>(floor(pos));
     var sum = vec3<f32>(0.0);
     var weights = 0.0;
-    for (var y = 0; y < 2; y++) {
-        for (var x = 0; x < 2; x++) {
+    for (var y = -1; y < 3; y++) {
+        for (var x = -1; x < 3; x++) {
             let tap = clamp(base + vec2<i32>(x, y), vec2<i32>(0), dims - 1);
             let sample = textureLoad(zp_rt_bounce, tap + vec2<i32>(0, row_offset), 0);
             let distance_delta = abs(sample.a - distance);
@@ -44,11 +44,12 @@ fn zp_rt_upsample_light(uv: vec2<f32>, distance: f32, dims: vec2<i32>, row_offse
             if !tap_surface.present || dot(tap_surface.normal, receiver.normal) < 0.85 {
                 continue;
             }
-            let kernel = 1.0 - abs(vec2<f32>(f32(x), f32(y)) - fract(pos));
-            let weight = kernel.x * kernel.y * (1.0 - smoothstep(0.06, max(0.48, distance * 0.042), distance_delta));
+            let offset = vec2<f32>(f32(x), f32(y)) - fract(pos);
+            let kernel = exp(-dot(offset, offset) * 0.45);
+            let weight = kernel * (1.0 - smoothstep(0.06, max(0.48, distance * 0.042), distance_delta));
             sum += sample.rgb * weight;
             weights += weight;
         }
     }
-    return sum / max(0.25, weights);
+    return sum / max(0.05, weights);
 }
