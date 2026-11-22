@@ -199,7 +199,7 @@ fn zp_er_eval_portal(
     return accum;
 }
 
-fn post(input: PostInput) -> vec4<f32> {
+fn zp_er_post(input: PostInput) -> vec4<f32> {
     let reflection = textureLoad(zp_reflection, vec2<i32>(input.pixel), 0).rgb;
     let base = max(input.color.rgb + reflection, vec3<f32>(0.0));
     if (frame.dimension != 1 || !end_rift) {
@@ -228,4 +228,11 @@ fn post(input: PostInput) -> vec4<f32> {
         portal_open, portal_flash, t_scene, jitter, phase_time, &trans
     );
     return vec4<f32>(base * trans + hdr, 1.0);
+}
+
+// Screen-space subsurface scattering diffuses the lit picture before the reflection contribution is added.
+fn post(input: PostInput) -> vec4<f32> {
+    var lit = input;
+    lit.color = zp_sss_apply(input);
+    return zp_er_post(lit);
 }

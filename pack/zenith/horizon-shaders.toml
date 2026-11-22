@@ -587,15 +587,9 @@ size = [960, 540]
 keep = "view"
 
 [[resource]]
-name = "zp_hiz_half"
-format = "rgba32float"
-scale = 0.5
-keep = "view"
-
-[[resource]]
-name = "zp_hiz_quarter"
-format = "rgba32float"
-scale = 0.25
+name = "zp_hiz"
+format = "r32float"
+size = [480, 270]
 keep = "view"
 
 [[resource]]
@@ -661,31 +655,24 @@ name = "Compose AO + light"
 reads = ["ao", "vlight", "zp_climate"]
 
 [[post]]
-file = "post/sss_screen.wgsl"
-name = "Subsurface scattering"
-
-[[post]]
-file = "post/hiz_half.wgsl"
-name = "Hi-Z half"
-output = "zp_hiz_half"
-
-[[post]]
-file = "post/hiz_quarter.wgsl"
-name = "Hi-Z quarter"
-output = "zp_hiz_quarter"
-reads = ["zp_hiz_half"]
+file = "post/hiz.wgsl"
+name = "Hi-Z depth"
+compute = true
+dispatch = [480, 270, 1]
+workgroup = [8, 8, 1]
+writes = ["zp_hiz"]
 
 [[post]]
 file = "post/ssr.wgsl"
 files = ["post/reprojection.wgsl"]
 name = "Reflections"
 output = "zp_reflection"
-reads = ["zp_reflection_previous", "zp_hiz_quarter"]
+reads = ["zp_reflection_previous", "zp_hiz"]
 
 [[post]]
 file = "post/end_rift.wgsl"
-files = ["shared/rift_source.wgsl"]
-name = "End warp rift"
+files = ["shared/rift_source.wgsl", "post/sss_screen.wgsl"]
+name = "End warp rift and subsurface scattering"
 reads = ["zp_reflection"]
 
 [[post]]
@@ -790,21 +777,6 @@ description = "Roughness-aware reflection cone with contact-hardening blur, so s
 type = "bool"
 default = true
 resets = "view"
-
-[[options]]
-id = "ssr_hiz"
-name = "Hi-Z Reflection Tracing"
-description = "Skips empty space with a two-level depth pyramid, so reflections reach farther for the same cost. Needs SSR."
-type = "bool"
-default = true
-resets = "view"
-
-[[options]]
-id = "sss_screen"
-name = "Screen-Space Subsurface Scattering"
-description = "Diffuses light across skin, wax, snow, ice and honey, with the red channel scattering farthest."
-type = "bool"
-default = true
 
 [[options]]
 id = "temporal_ssr"
@@ -1067,13 +1039,6 @@ type = "bool"
 default = true
 
 [[options]]
-id = "cloud_light_march"
-name = "Cloud Light March"
-description = "Raymarch sunlight through the volumetric clouds with three taps for deeper self-shadowing."
-type = "bool"
-default = true
-
-[[options]]
 id = "cloud_shadows"
 name = "Cloud Shadows"
 description = "Project soft drifting shadows from overhead clouds onto terrain and entities."
@@ -1187,7 +1152,7 @@ default = true
 [[options]]
 id = "body_sss"
 name = "Body Subsurface Scattering"
-description = "Soft light bleeding and back transmission on skin, wax, snow, ice and other LabPBR subsurface materials."
+description = "Soft light bleeding, back transmission and screen-space diffusion on skin, wax, snow, ice and other LabPBR subsurface materials."
 type = "bool"
 default = true
 
@@ -1312,7 +1277,7 @@ items = ["page:shadows", "page:lighting", "page:water", "page:effects", "page:im
 id = "effects"
 name = "Effects"
 description = "Quality mode, ambient occlusion and light shafts."
-items = ["quality_mode", "ao_strength", "temporal_ao", "volumetric_light", "temporal_light", "ssr_enabled", "ssr_glossy", "ssr_hiz", "temporal_ssr"]
+items = ["quality_mode", "ao_strength", "temporal_ao", "volumetric_light", "temporal_light", "ssr_enabled", "ssr_glossy", "temporal_ssr"]
 
 [[pages]]
 id = "image"
@@ -1339,7 +1304,6 @@ items = [
     "shadow_pcss",
     "colored_shadows",
     "cloud_shadows",
-    "cloud_light_march",
     "contact_shadows",
 ]
 
@@ -1361,7 +1325,6 @@ items = [
     "rain_wetness",
     "foliage_sss",
     "body_sss",
-    "sss_screen",
     "snow_sand_sparkle",
 ]
 

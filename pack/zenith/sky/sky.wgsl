@@ -12,7 +12,6 @@ override clouds: bool = true;
 override cloud_coverage: f32 = 0.48;
 override sky_saturation: f32 = 1.0;
 override cirrus_clouds: bool = true;
-override cloud_light_march: bool = true;
 override aurora: bool = true;
 override bob_sky_match: bool = true;
 
@@ -276,7 +275,7 @@ fn sky_cloud_layer(d: vec3<f32>, background: vec3<f32>, sun: vec3<f32>, daylight
         var illumination = h_amb;
         if cloud_sun > 0.0 {
             var sun_tau = sky_cloud_density(p + sun * 45.0, coverage, footprint, wind) * 2.2;
-            if cloud_light_march {
+            {
                 // Extra light-march taps at growing distances (Schneider/Vos 2015, cone-sampled light march):
                 // clouds now self-shadow across their whole depth instead of one 45-block probe.
                 let jitter = zn_ign(d.xz * 4096.0 + vec2<f32>(f32(i)), 0u);

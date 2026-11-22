@@ -112,7 +112,7 @@ fn material(input: MaterialInput) -> Surface {
             surface_data = -clamp(surf.metallic, 0.1, 1.0);
         } else if (input.tags & TAG_GEM) != 0u {
             surface_data = 0.25;
-         else if surf.subsurface > 0.30 {
+        } else if surf.subsurface > 0.30 {
             surface_data = 0.45; // Screen-space subsurface class: skin, wax, snow, ice, honey.
         }
         // Pass geometric normal to scene_surface so post-process GTAO & planar SSR stay noise-free.

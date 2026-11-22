@@ -4,7 +4,6 @@
 override ssr_enabled: bool = true;
 override temporal_ssr: bool = false;
 override ssr_glossy: bool = true;
-override ssr_hiz: bool = true;
 override quality_mode: u32 = 1u; // 0 = Performance, 1 = Balanced, 2 = Quality (manifest order)
 
 const ZP_SSR_STEPS: vec3<i32> = vec3<i32>(24, 36, 48);
@@ -25,10 +24,10 @@ fn zp_ssr_sample_color(uv: vec2<f32>, smoothness: f32, hit_dist: f32) -> vec3<f3
 }
 
 // Hi-Z leap: true when the ray, sampled at four points spaced 2 * dt apart, stays in front of the nearest
-// surface of the 12x12-pixel neighbourhood around each point (zp_hiz_quarter), with the points no more than
+// surface of the 12x12-pixel neighbourhood around each point (zp_hiz), with the points no more than
 // 8 pixels apart. The skipped samples then cannot cross any surface, so the march advances 8 * dt at once.
 fn zp_ssr_hiz_empty(Q0: vec3<f32>, Rm: vec3<f32>, t: f32, dt: f32) -> bool {
-    let qdims = vec2<f32>(textureDimensions(zp_hiz_quarter));
+    let qdims = vec2<f32>(textureDimensions(zp_hiz));
     let fdims = vec2<f32>(textureDimensions(previous));
     var last_px = vec2<f32>(0.0);
     var have_last = false;
@@ -48,7 +47,7 @@ fn zp_ssr_hiz_empty(Q0: vec3<f32>, Rm: vec3<f32>, t: f32, dt: f32) -> bool {
         }
         last_px = px;
         have_last = true;
-        let nearest = textureLoad(zp_hiz_quarter, vec2<i32>(ray_uv * qdims), 0).r;
+        let nearest = textureLoad(zp_hiz, vec2<i32>(ray_uv * qdims), 0).r;
         // Reversed depth: a larger value is nearer. Sky tiles (0) are left to the normal march.
         if nearest <= 0.0 || clip.z / clip.w <= nearest * 1.002 + 1e-5 {
             return false;
@@ -112,7 +111,7 @@ fn post(input: PostInput) -> vec4<f32> {
 
     var empty_run = 0;
     for (var i = 0; i < steps; i = i + 1) {
-        if ssr_hiz && empty_run >= 2 {
+        if empty_run >= 2 {
             let dt0 = clamp(0.06 + t * 0.065, 0.06, 1.25);
             if zp_ssr_hiz_empty(Q0, Rm, t, dt0) {
                 t_prev = t + dt0 * 7.0;

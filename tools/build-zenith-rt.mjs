@@ -80,7 +80,12 @@ description = "Choose reflections, add traced shadows and local stained-glass li
 
 [[options]]
 id = "temporal_ssr"`);
-replaceOnce(manifest, '"ssr_enabled", "ssr_glossy", "ssr_hiz", "temporal_ssr"]', '"ssr_enabled", "ssr_glossy", "ssr_hiz", "temporal_ssr", "rt_lighting"]');
+// A pack may declare 8 resources and the RT bounce target takes the last one, so RT drops the Hi-Z depth level.
+// Hardware rays handle the long reflections; the screen-space march stays as the fallback without the leap.
+replaceOnce(manifest, '[[resource]]\nname = "zp_hiz"\nformat = "r32float"\nsize = [480, 270]\nkeep = "view"\n\n', '');
+replaceOnce(manifest, '[[post]]\nfile = "post/hiz.wgsl"\nname = "Hi-Z depth"\ncompute = true\ndispatch = [480, 270, 1]\nworkgroup = [8, 8, 1]\nwrites = ["zp_hiz"]\n\n', '');
+replaceOnce(manifest, 'reads = ["zp_reflection_previous", "zp_hiz"]', 'reads = ["zp_reflection_previous"]');
+replaceOnce(manifest, '"ssr_enabled", "ssr_glossy", "temporal_ssr"]', '"ssr_enabled", "ssr_glossy", "temporal_ssr", "rt_lighting"]');
 replaceOnce(manifest, 'description = "Strength of light shafts. 0 turns them off. Needs shadows."',
   'description = "Strength of light shafts. Solar shafts use shadow maps. Local stained-glass shafts use Reflections + Shadows or Full RT."');
 
@@ -134,6 +139,13 @@ replaceOnce(reflection, '    if (dir_fade <= 0.001) {\n        return vec4<f32>(
 replaceOnce(reflection, '    if (!hit && !(has_sky && surf.smoothness > 0.78 && R.y > -0.05)) {\n        return vec4<f32>(0.0);',
   '    if (!hit && !(has_sky && surf.smoothness > 0.78 && R.y > -0.05)) {\n        return vec4<f32>(rt_delta, 0.0);');
 replaceOnce(reflection, '    if (refl_w <= 0.001) {\n        return vec4<f32>(0.0);', '    if (refl_w <= 0.001) {\n        return vec4<f32>(rt_delta, 0.0);');
+{
+  const text = files.get(reflection);
+  const from = text.indexOf('fn zp_ssr_hiz_empty(');
+  const to = text.indexOf('fn post(', from);
+  if (from < 0 || to < 0) throw new Error('Missing SSR Hi-Z helper');
+  replaceOnce(reflection, text.slice(from, to), 'fn zp_ssr_hiz_empty(Q0: vec3<f32>, Rm: vec3<f32>, t: f32, dt: f32) -> bool {\n    return false;\n}\n\n');
+}
 const ssr = files.get(reflection);
 const start = ssr.indexOf('    let hit_col = zp_ssr_sample_color(sample_uv, surf.smoothness, select(0.0, t, hit));');
 const end = ssr.indexOf('    if !temporal_ssr', start);
@@ -187,6 +199,8 @@ for (const file of overlays) files.set(file, read(variant, file));
 fs.mkdirSync(path.dirname(target), { recursive: true });
 const staging = fs.mkdtempSync(path.join(path.dirname(target), '.zenith-rt-'));
 fs.cpSync(source, staging, { recursive: true });
+// The Hi-Z depth pass is not part of RT (see the resource budget above); a pack may hold only declared files.
+fs.rmSync(path.join(staging, 'post/hiz.wgsl'));
 for (const [file, text] of files) {
   fs.writeFileSync(path.join(staging, file), text);
 }

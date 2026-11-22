@@ -1,17 +1,18 @@
 // src: J. Jimenez, V. Sundstedt, D. Gutierrez, "Screen-Space Perceptual Rendering of Human Skin", ACM TAP 6(4), 2009 and Jimenez et al., "Separable Subsurface Scattering", CGF 2015 (screen-space diffusion with depth-aware weights); E. d'Eon, D. Luebke, "Advanced Techniques for Realistic Real-Time Skin Rendering", GPU Gems 3, 2007 (sum-of-Gaussians profile, red scatters farthest); Horizon Shader API 0.2 (surface_at, view_position, previous).
 // Screen-space subsurface scattering for surfaces the material stage tagged with surface data 0.45 (skin, wax, snow, ice, honey).
 
-override sss_screen: bool = true;
-override quality_mode: u32 = 1u; // 0 = Performance, 1 = Balanced, 2 = Quality (manifest order)
+override body_sss: bool = true;
+// Runs inside the End warp rift pass (post/end_rift.wgsl) because a pack may chain only 12 post passes; that
+// pass declares quality_mode.
 
 const ZP_SSS_CLASS: f32 = 0.45;
 const ZP_SSS_TAPS: vec3<i32> = vec3<i32>(8, 12, 16);
 // Scatter width in blocks per channel (red travels farthest, blue least).
 const ZP_SSS_WIDTH: vec3<f32> = vec3<f32>(0.10, 0.045, 0.025);
 
-fn post(input: PostInput) -> vec4<f32> {
+fn zp_sss_apply(input: PostInput) -> vec4<f32> {
     let base = input.color;
-    if !sss_screen || input.depth <= 0.0 || frame.eye_in != 0u {
+    if !body_sss || input.depth <= 0.0 || frame.eye_in != 0u {
         return base;
     }
     let here = surface_at(vec2<i32>(input.pixel));
