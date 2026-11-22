@@ -246,3 +246,8 @@ Status: `ok` written from the sources, `rewritten` rewritten from sources, `pend
 |---|---|---|---|
 | `sky/sky.wgsl` | The eight single-sample slabs are replaced by a 32-step ray march through the whole cloud volume | A. Schneider, N. Vos, SIGGRAPH 2015 | Jittered front-to-back samples at 3D positions, segment capped at 7000 blocks, early exit below 2% transmission, dense flat bases and eroded domed tops via a height bias in `sky_cloud_density`, three light-march taps per lit sample |
 
+### Cumulus cloud field
+
+| File | Algorithm / change | Sources | Own choices |
+|---|---|---|---|
+| `sky/sky.wgsl`, `shared/common.wgsl` | Layer 150-290 blocks. A 2D macro map (the existing fBm) sets cloud presence and height, 3D billow noise erodes it, light-march taps read the macro field only | A. Schneider, N. Vos, SIGGRAPH 2015 (shape / detail split, height profile) | Cloud top follows the macro value (thin edges 30% of the layer, cores 100%), two 3D noise octaves at 0.012 and 0.028 per block, 24 / 36 / 48 march steps by `quality_mode`, underside ambient 0.40 to 1.25 by height; terrain shadows now sample the mid-plane at 220 |

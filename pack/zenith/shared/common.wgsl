@@ -184,7 +184,7 @@ fn zn_celestial_weights(sun_height: f32, moon_height: f32) -> vec2<f32> {
     return smoothstep(vec2<f32>(0.0), vec2<f32>(0.14), vec2<f32>(sun_height, moon_height));
 }
 
-// Synced with sky/sky.wgsl cloud slab (SKY_CLOUD_BASE=150, SKY_CLOUD_TOP=240, 3600s closed wind orbit).
+// Synced with sky/sky.wgsl cloud slab (SKY_CLOUD_BASE=150, SKY_CLOUD_TOP=290, 3600s closed wind orbit).
 // Returns direct-light transmission in [0.46, 1.0]; 1.0 when clouds are off, light is near/below horizon,
 // or receiver is above the cloud deck.
 fn zn_cloud_shadow(world_pos: vec3<f32>, light_dir: vec3<f32>, time: f32, coverage: f32) -> f32 {
@@ -192,17 +192,17 @@ fn zn_cloud_shadow(world_pos: vec3<f32>, light_dir: vec3<f32>, time: f32, covera
     if (cov <= 0.001 || light_dir.y <= 0.03) {
         return 1.0;
     }
-    let below_fade = 1.0 - smoothstep(150.0, 220.0, world_pos.y);
+    let below_fade = 1.0 - smoothstep(190.0, 260.0, world_pos.y);
     if (below_fade <= 0.001) {
         return 1.0;
     }
     let elev_fade = smoothstep(0.04, 0.22, light_dir.y);
-    let t = clamp((185.0 - world_pos.y) / max(light_dir.y, 0.08), 0.0, 2500.0);
+    let t = clamp((220.0 - world_pos.y) / max(light_dir.y, 0.08), 0.0, 2500.0);
     let p_xz = world_pos.xz + light_dir.xz * t;
     let angle = time * (6.2831853 / 3600.0);
     let wind = vec2<f32>(sin(angle), 1.0 - cos(angle)) * 3.5;
-    // Matches sky_cloud_density mid-plane height = (185 - 150) / (240 - 150) = 0.38889
-    let uv = p_xz * 0.003 + wind + vec2<f32>(0.38889 * 0.61, -0.38889 * 0.37);
+    // Matches sky_cloud_density mid-plane height = (220 - 150) / (290 - 150) = 0.5
+    let uv = p_xz * 0.003 + wind + vec2<f32>(0.5 * 0.61, -0.5 * 0.37);
     let shape = zn_fbm2(uv, 3);
     let threshold = mix(1.0, 0.13, cov);
     let density = smoothstep(0.0, 0.42, shape - threshold - 0.06);

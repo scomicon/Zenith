@@ -9,6 +9,7 @@
 // No LUTs, textures, code or assets from either presentation are included.
 
 override clouds: bool = true;
+override quality_mode: u32 = 1u; // 0 = Performance, 1 = Balanced, 2 = Quality (manifest order)
 override cloud_coverage: f32 = 0.48;
 override sky_saturation: f32 = 1.0;
 override cirrus_clouds: bool = true;
@@ -179,8 +180,8 @@ fn sky_cirrus_layer(d: vec3<f32>, background: vec3<f32>, sun: vec3<f32>, dayligh
 // sample lands depends only on the ray and the camera height, never on a
 // per-ray segment length. That removes the ray-dependent sample jitter.
 const SKY_CLOUD_BASE: f32 = 150.0;
-const SKY_CLOUD_TOP: f32 = 240.0;
-const SKY_CLOUD_STEPS: u32 = 32u;
+const SKY_CLOUD_TOP: f32 = 290.0;
+const SKY_CLOUD_STEPS: vec3<u32> = vec3<u32>(24u, 36u, 48u); // by quality_mode
 const SKY_CLOUD_RANGE: f32 = 12000.0;
 
 // Band-limited fBm of value noise (same octave layout as zn_fbm2, 4 octaves).
@@ -208,24 +209,42 @@ fn sky_cloud_fbm(p: vec2<f32>, footprint: f32) -> f32 {
     return sum / norm;
 }
 
-fn sky_cloud_density(p: vec3<f32>, coverage: f32, footprint_blocks: f32, wind: vec2<f32>) -> f32 {
-    // Zenith layered field: fBm shape, finer erosion, smooth vertical envelope.
-    // Schneider/Vos: separate low-frequency shape, detail and height profile.
+// 3D value noise: two lattice layers of zn_noise2, blended along y.
+fn sky_noise3(p: vec3<f32>) -> f32 {
+    let iy = floor(p.y);
+    let fy = p.y - iy;
+    let u = fy * fy * (3.0 - 2.0 * fy);
+    let o0 = vec2<f32>(fract(iy * 0.7548776662) * 97.0, fract(iy * 0.5698402909) * 89.0);
+    let o1 = vec2<f32>(fract((iy + 1.0) * 0.7548776662) * 97.0, fract((iy + 1.0) * 0.5698402909) * 89.0);
+    return mix(zn_noise2(p.xz + o0), zn_noise2(p.xz + o1), u);
+}
+
+// Cumulus field (Schneider/Vos 2015 shape / detail split): a 2D macro map decides where clouds stand and how tall
+// they grow (thick cores tower, thin edges stay low); 3D billow noise erodes it into rounded puffs. The macro map
+// is the one `zn_cloud_shadow` samples, so terrain shadows follow the clouds. `detail` is off for light-march taps.
+fn sky_cloud_density(p: vec3<f32>, coverage: f32, footprint_blocks: f32, wind: vec2<f32>, detail: bool) -> f32 {
     let height = zn_remap(p.y, SKY_CLOUD_BASE, SKY_CLOUD_TOP, 0.0, 1.0);
-    let envelope = smoothstep(0.0, 0.20, height) * (1.0 - smoothstep(0.65, 1.0, height));
+    if height <= 0.0 || height >= 1.0 { return 0.0; }
     let uv = p.xz * 0.003 + wind + vec2<f32>(height * 0.61, -height * 0.37);
     let fp = footprint_blocks * 0.003;
-    let shape = sky_cloud_fbm(uv, fp);
-    var detail = 0.5;
-    if fp * 4.7 < 1.0 {
-        let filter_weight = 1.0 - smoothstep(0.35, 1.0, fp * 4.7);
-        detail = mix(0.5, zn_noise2(uv * 4.7 + vec2<f32>(height * 3.0)), filter_weight);
-    }
+    let macro_shape = sky_cloud_fbm(uv, fp);
     let threshold = mix(1.0, 0.13, coverage);
-    // Soft ramp instead of the former x3.5 clamp: a small change of the sample
-    // position no longer flips a sample between empty and opaque.
-    let x = shape - threshold - (1.0 - detail) * 0.12 + (0.5 - height) * 0.16;
-    return smoothstep(0.0, 0.45, x) * envelope;
+    let cover = smoothstep(0.0, 0.45, macro_shape - threshold);
+    if cover <= 0.0 { return 0.0; }
+    let top = mix(0.30, 1.0, cover);
+    let envelope = smoothstep(0.0, 0.10, height) * (1.0 - smoothstep(top * 0.55, top, height));
+    var d = cover * envelope;
+    var n = 0.5;
+    let fp3 = footprint_blocks * 0.012;
+    if detail && fp3 < 1.0 {
+        let q = vec3<f32>(p.x * 0.012 + wind.x * 4.0, p.y * 0.016, p.z * 0.012 + wind.y * 4.0);
+        let w = 1.0 - smoothstep(0.35, 1.0, fp3);
+        let n1 = sky_noise3(q);
+        let n2 = sky_noise3(q * 2.3 + vec3<f32>(7.1, 3.3, 1.7));
+        n = mix(0.5, n1 * 0.65 + n2 * 0.35, w);
+    }
+    d = d - (1.0 - n) * 0.45 * (1.0 - 0.5 * d);
+    return smoothstep(0.0, 0.38, d);
 }
 
 fn sky_cloud_layer(d: vec3<f32>, background: vec3<f32>, sun: vec3<f32>, daylight: f32) -> vec3<f32> {
@@ -256,26 +275,27 @@ fn sky_cloud_layer(d: vec3<f32>, background: vec3<f32>, sun: vec3<f32>, daylight
     let t_in = clamp(min(ta, tb), 0.0, SKY_CLOUD_RANGE);
     let t_out = min(clamp(max(ta, tb), 0.0, SKY_CLOUD_RANGE), t_in + 7000.0);
     if t_out - t_in <= 0.0 { return background; }
-    let dt = (t_out - t_in) / f32(SKY_CLOUD_STEPS);
+    let steps = SKY_CLOUD_STEPS[min(quality_mode, 2u)];
+    let dt = (t_out - t_in) / f32(steps);
     let jitter = zn_hash21(d.xz * 953.0 + vec2<f32>(d.y * 331.0, 17.0));
-    for (var k = 0u; k < SKY_CLOUD_STEPS; k++) {
+    for (var k = 0u; k < steps; k++) {
         if transmission < 0.02 { break; }
         let distance = t_in + (f32(k) + jitter) * dt;
         let p = origin + d * distance;
         let footprint = distance * footprint_scale;
-        let density = sky_cloud_density(p, coverage, footprint, wind);
+        let density = sky_cloud_density(p, coverage, footprint, wind, true);
         if density <= 0.002 { continue; }
         let height = zn_remap(p.y, SKY_CLOUD_BASE, SKY_CLOUD_TOP, 0.0, 1.0);
         // Beer-powder multi-scattering & silver-lining HG phase; Schneider/Vos 2015.
         let alpha = 1.0 - exp(-density * dt * 0.035);
         if alpha < 0.003 { continue; }
-        let h_amb = ambient * mix(0.62, 1.18, height);
+        let h_amb = ambient * mix(0.40, 1.25, height);
         var illumination = h_amb;
         if cloud_sun > 0.0 {
             // Three light-march taps at growing distances (cone-sampled light march): the whole depth self-shadows.
-            let sun_tau = (sky_cloud_density(p + sun * 45.0, coverage, footprint, wind) * 1.1
-                + sky_cloud_density(p + sun * (22.0 + 14.0 * jitter), coverage, footprint, wind) * 0.55
-                + sky_cloud_density(p + sun * (90.0 + 30.0 * jitter), coverage, footprint, wind) * 1.4);
+            let sun_tau = (sky_cloud_density(p + sun * 45.0, coverage, footprint, wind, false) * 1.1
+                + sky_cloud_density(p + sun * (22.0 + 14.0 * jitter), coverage, footprint, wind, false) * 0.55
+                + sky_cloud_density(p + sun * (90.0 + 30.0 * jitter), coverage, footprint, wind, false) * 1.4);
             let multi = max(exp(-sun_tau), exp(-sun_tau * 0.28) * 0.48);
             let powder = 1.0 - exp(-density * 3.8);
             let scatter = multi * mix(1.0, 0.55 + 0.75 * powder, smoothstep(-0.15, 0.55, mu));
