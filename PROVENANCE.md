@@ -233,3 +233,10 @@ Status: `ok` written from the sources, `rewritten` rewritten from sources, `pend
 | `sky/sky.wgsl` | Two extra light-march taps through the volumetric cloud layer | A. Schneider, N. Vos, SIGGRAPH 2015 | Taps at 22-36 and 90-120 blocks with IGN jitter, weights 1.1 / 1.4; option `cloud_light_march` |
 | `variants/zenith-rt/compute/ray_bounce.wgsl` | Fourth diffuse bounce direction | J. Kajiya, SIGGRAPH 1986 | Quadrature over 4 strata, weight 0.20 |
 
+### Hi-Z SSR and screen-space subsurface scattering
+
+| File | Algorithm / change | Sources | Own choices |
+|---|---|---|---|
+| `post/hiz_half.wgsl`, `post/hiz_quarter.wgsl`, `post/ssr.wgsl` | Two-level max-depth pyramid (1/2 and 1/4 of the world's size) and an empty-space leap in the SSR march | Tevs, Ihrke, Seidel, I3D 2008 (max pyramid); Grossman, GPU Pro 5, 2014 (Hi-Z screen-space tracing) | Horizon passes only render at scale 1, 0.5 or 0.25, so the pyramid has two coarse levels. Level 2 takes the nearest depth over a 3x3 neighbourhood of 4x4 tiles. The march leaps 8 steps when four samples spaced 2 steps and at most 8 px apart are all in front of that value; option `ssr_hiz` |
+| `post/sss_screen.wgsl`, `material/material.wgsl` | Screen-space diffusion with depth-aware weights, per-channel Gaussian widths | Jimenez et al., ACM TAP 2009 and CGF 2015; d'Eon, Luebke, GPU Gems 3, 2007 | Surface data class `0.45` marks the material (`subsurface > 0.30`, not foliage, metal or gem), widths `(0.10, 0.045, 0.025)` blocks, 8 / 12 / 16 golden-angle taps with IGN rotation, blur amount 0.38-0.50 so texture detail survives; option `sss_screen` |
+

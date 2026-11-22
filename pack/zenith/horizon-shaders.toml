@@ -587,6 +587,18 @@ size = [960, 540]
 keep = "view"
 
 [[resource]]
+name = "zp_hiz_half"
+format = "rgba32float"
+scale = 0.5
+keep = "view"
+
+[[resource]]
+name = "zp_hiz_quarter"
+format = "rgba32float"
+scale = 0.25
+keep = "view"
+
+[[resource]]
 name = "zp_luma_tiles"
 format = "rgba32uint"
 size = [64, 96]
@@ -649,11 +661,26 @@ name = "Compose AO + light"
 reads = ["ao", "vlight", "zp_climate"]
 
 [[post]]
+file = "post/sss_screen.wgsl"
+name = "Subsurface scattering"
+
+[[post]]
+file = "post/hiz_half.wgsl"
+name = "Hi-Z half"
+output = "zp_hiz_half"
+
+[[post]]
+file = "post/hiz_quarter.wgsl"
+name = "Hi-Z quarter"
+output = "zp_hiz_quarter"
+reads = ["zp_hiz_half"]
+
+[[post]]
 file = "post/ssr.wgsl"
 files = ["post/reprojection.wgsl"]
 name = "Reflections"
 output = "zp_reflection"
-reads = ["zp_reflection_previous"]
+reads = ["zp_reflection_previous", "zp_hiz_quarter"]
 
 [[post]]
 file = "post/end_rift.wgsl"
@@ -763,6 +790,21 @@ description = "Roughness-aware reflection cone with contact-hardening blur, so s
 type = "bool"
 default = true
 resets = "view"
+
+[[options]]
+id = "ssr_hiz"
+name = "Hi-Z Reflection Tracing"
+description = "Skips empty space with a two-level depth pyramid, so reflections reach farther for the same cost. Needs SSR."
+type = "bool"
+default = true
+resets = "view"
+
+[[options]]
+id = "sss_screen"
+name = "Screen-Space Subsurface Scattering"
+description = "Diffuses light across skin, wax, snow, ice and honey, with the red channel scattering farthest."
+type = "bool"
+default = true
 
 [[options]]
 id = "temporal_ssr"
@@ -1270,7 +1312,7 @@ items = ["page:shadows", "page:lighting", "page:water", "page:effects", "page:im
 id = "effects"
 name = "Effects"
 description = "Quality mode, ambient occlusion and light shafts."
-items = ["quality_mode", "ao_strength", "temporal_ao", "volumetric_light", "temporal_light", "ssr_enabled", "ssr_glossy", "temporal_ssr"]
+items = ["quality_mode", "ao_strength", "temporal_ao", "volumetric_light", "temporal_light", "ssr_enabled", "ssr_glossy", "ssr_hiz", "temporal_ssr"]
 
 [[pages]]
 id = "image"
@@ -1319,6 +1361,7 @@ items = [
     "rain_wetness",
     "foliage_sss",
     "body_sss",
+    "sss_screen",
     "snow_sand_sparkle",
 ]
 

@@ -154,4 +154,6 @@ horizon-shader check outputs/zenith-rt/zenith_rt
 | `ssr_glossy` | bool | `post/ssr.wgsl` (roughness cone and contact-hardening blur) |
 | `body_sss` | bool | `material/lighting.wgsl` (skin, wax, snow, ice and other LabPBR subsurface materials) |
 | `cloud_light_march` | bool | `sky/sky.wgsl` (three-tap sun march through clouds) |
+| `ssr_hiz` | bool | `post/ssr.wgsl`, `post/hiz_half.wgsl`, `post/hiz_quarter.wgsl` (depth pyramid and empty-space leaps) |
+| `sss_screen` | bool | `post/sss_screen.wgsl` (screen-space diffusion on surfaces tagged with surface data 0.45) |
 

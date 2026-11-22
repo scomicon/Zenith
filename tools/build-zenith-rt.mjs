@@ -80,7 +80,7 @@ description = "Choose reflections, add traced shadows and local stained-glass li
 
 [[options]]
 id = "temporal_ssr"`);
-replaceOnce(manifest, '"ssr_enabled", "ssr_glossy", "temporal_ssr"]', '"ssr_enabled", "ssr_glossy", "temporal_ssr", "rt_lighting"]');
+replaceOnce(manifest, '"ssr_enabled", "ssr_glossy", "ssr_hiz", "temporal_ssr"]', '"ssr_enabled", "ssr_glossy", "ssr_hiz", "temporal_ssr", "rt_lighting"]');
 replaceOnce(manifest, 'description = "Strength of light shafts. 0 turns them off. Needs shadows."',
   'description = "Strength of light shafts. Solar shafts use shadow maps. Local stained-glass shafts use Reflections + Shadows or Full RT."');
 
