@@ -916,7 +916,7 @@ id = "bob_sky_match"
 name = "Sky follows view bob"
 description = "The engine draws the sky without the walking sway, so it stays still while the ground rocks against it. On: the sky sways with the ground. Off: the engine's sky."
 type = "bool"
-default = true
+default = false
 
 [[options]]
 id = "sky_saturation"

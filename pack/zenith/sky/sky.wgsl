@@ -14,7 +14,7 @@ override cloud_coverage: f32 = 0.48;
 override sky_saturation: f32 = 1.0;
 override cirrus_clouds: bool = true;
 override aurora: bool = true;
-override bob_sky_match: bool = true;
+override bob_sky_match: bool = false;
 
 const SKY_PI: f32 = 3.14159265359;
 const SKY_GROUND: f32 = 6360.0;
