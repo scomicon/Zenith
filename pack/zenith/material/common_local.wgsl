@@ -27,6 +27,7 @@ override pbr_displacement: bool = true;
 override displacement_cells: u32 = 1u;
 override rain_wetness: bool = true;
 override foliage_sss: bool = true;
+override body_sss: bool = true;
 override snow_sand_sparkle: bool = true;
 
 override water_reflections: bool = true;

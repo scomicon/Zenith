@@ -230,6 +230,27 @@ fn mat_eval_foliage_sss(
     return mat_foliage_transmittance_tint(surf.albedo) * (sss_shape * canopy_ao * MAT_INV_PI) * light_radiance * sss_vis;
 }
 
+// Body subsurface scattering for non-foliage materials with LabPBR subsurface (skin, wax, snow, ice, honey, slime).
+// Penner, "Pre-Integrated Skin Shading", SIGGRAPH 2011 (wrap lighting with a wider red channel) and Jensen et al.,
+// SIGGRAPH 2001 (back transmission); the per-channel wrap widths and thickness proxy are Zenith's own.
+fn mat_eval_body_sss(
+    surf: PbrSurface,
+    V: vec3<f32>,
+    L: vec3<f32>,
+    light_radiance: vec3<f32>,
+    sss_vis: vec3<f32>,
+) -> vec3<f32> {
+    let ndotl = dot(surf.normal, L);
+    let w = vec3<f32>(0.55, 0.28, 0.16) * surf.subsurface;
+    let wrapped = clamp((vec3<f32>(ndotl) + w) / ((vec3<f32>(1.0) + w) * (vec3<f32>(1.0) + w)), vec3<f32>(0.0), vec3<f32>(1.0));
+    // Only the light that bleeds past the Lambert terminator is added, so lit sides are not doubled.
+    let bleed = max(wrapped - vec3<f32>(max(ndotl, 0.0) * 0.5), vec3<f32>(0.0));
+    let back = pow(clamp(dot(V, -L), 0.0, 1.0), 3.0) * (1.0 - 0.5 * surf.ao) * 0.30;
+    let tint = clamp(surf.albedo / max(zn_luma(surf.albedo), 0.05), vec3<f32>(0.35), vec3<f32>(1.6));
+    let soft_vis = mix(sss_vis, vec3<f32>(1.0), 0.12);
+    return surf.albedo * tint * ((bleed * 0.55 + vec3<f32>(back)) * surf.subsurface * MAT_INV_PI) * light_radiance * soft_vis;
+}
+
 fn mat_eval_foliage_local_sss(
     surf: PbrSurface,
     V: vec3<f32>,
@@ -390,6 +411,10 @@ fn mat_shade_opaque_or_cutout(
         let geom_n_sss = mat_safe_normalize(input.normal);
         let sss_vis = mat_foliage_backlit_visibility(input.position, geom_n_sss, L, input.light.y, shadow.sun_visibility);
         color += mat_eval_foliage_sss(surf, V, L, sun_rad, sss_vis * mix(0.75, 1.0, surf.relief_shadow));
+    }
+    let is_leafy = is_plant || (input.tags & TAG_FOLIAGE) != 0u || input.material == MAT_ID_LEAVES;
+    if body_sss && !is_leafy && surf.subsurface > 0.01 && zn_luma(sun_rad) > 1e-4 {
+        color += mat_eval_body_sss(surf, V, L, sun_rad, shadow.sun_visibility * surf.relief_shadow);
     }
     let custom_finish = procedural_pbr && pbr_specular
         && (input.tags & (TAG_COPPER_FINISH | TAG_SOLID_SCATTER | TAG_AMETHYST)) != 0u && !surf.has_labpbr;

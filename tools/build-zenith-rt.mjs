@@ -80,7 +80,7 @@ description = "Choose reflections, add traced shadows and local stained-glass li
 
 [[options]]
 id = "temporal_ssr"`);
-replaceOnce(manifest, '"ssr_enabled", "temporal_ssr"]', '"ssr_enabled", "temporal_ssr", "rt_lighting"]');
+replaceOnce(manifest, '"ssr_enabled", "ssr_glossy", "temporal_ssr"]', '"ssr_enabled", "ssr_glossy", "temporal_ssr", "rt_lighting"]');
 replaceOnce(manifest, 'description = "Strength of light shafts. 0 turns them off. Needs shadows."',
   'description = "Strength of light shafts. Solar shafts use shadow maps. Local stained-glass shafts use Reflections + Shadows or Full RT."');
 
@@ -135,10 +135,10 @@ replaceOnce(reflection, '    if (!hit && !(has_sky && surf.smoothness > 0.78 && 
   '    if (!hit && !(has_sky && surf.smoothness > 0.78 && R.y > -0.05)) {\n        return vec4<f32>(rt_delta, 0.0);');
 replaceOnce(reflection, '    if (refl_w <= 0.001) {\n        return vec4<f32>(0.0);', '    if (refl_w <= 0.001) {\n        return vec4<f32>(rt_delta, 0.0);');
 const ssr = files.get(reflection);
-const start = ssr.indexOf('    let hit_col = zp_ssr_sample_color(sample_uv, surf.smoothness);');
+const start = ssr.indexOf('    let hit_col = zp_ssr_sample_color(sample_uv, surf.smoothness, select(0.0, t, hit));');
 const end = ssr.indexOf('    if !temporal_ssr', start);
 if (start < 0 || end < 0) throw new Error('Missing SSR lighting integration point');
-replaceOnce(reflection, ssr.slice(start, end), `    let hit_col = zp_ssr_sample_color(sample_uv, surf.smoothness);
+replaceOnce(reflection, ssr.slice(start, end), `    let hit_col = zp_ssr_sample_color(sample_uv, surf.smoothness, select(0.0, t, hit));
     let reflection_delta = zp_resolve_reflection(base, hit_col, refl_w, ndotv, surf.data) * (1.0 - traced.a) + rt_delta;
     if traced.a > 0.001 { return vec4<f32>(reflection_delta, 0.0); }
 `);

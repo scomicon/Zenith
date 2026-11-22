@@ -3,14 +3,17 @@
 
 override ssr_enabled: bool = true;
 override temporal_ssr: bool = false;
+override ssr_glossy: bool = true;
 override quality_mode: u32 = 1u; // 0 = Performance, 1 = Balanced, 2 = Quality (manifest order)
 
 const ZP_SSR_STEPS: vec3<i32> = vec3<i32>(24, 36, 48);
 
-fn zp_ssr_sample_color(uv: vec2<f32>, smoothness: f32) -> vec3<f32> {
+fn zp_ssr_sample_color(uv: vec2<f32>, smoothness: f32, hit_dist: f32) -> vec3<f32> {
     let dims = vec2<f32>(textureDimensions(previous));
     let px = 1.0 / max(dims, vec2<f32>(1.0));
-    let blur = clamp((1.0 - smoothness) * 6.5 + 0.5, 0.5, 4.0);
+    // Contact hardening: rough surfaces blur more the farther the reflected point is from them.
+    let spread = select(1.0, 1.0 + (1.0 - smoothness) * clamp(hit_dist * 0.18, 0.0, 1.6), ssr_glossy);
+    let blur = clamp((1.0 - smoothness) * 6.5 * spread + 0.5, 0.5, 5.5);
     let o1 = vec2<f32>(blur * px.x, blur * 0.5 * px.y);
     let o2 = vec2<f32>(-blur * 0.5 * px.x, blur * px.y);
     let c0 = textureSampleLevel(previous, linear_sampler, clamp(uv + o1, vec2<f32>(0.001), vec2<f32>(0.999)), 0.0).rgb;
@@ -27,7 +30,7 @@ fn post(input: PostInput) -> vec4<f32> {
     }
 
     let surf = surface_at(vec2<i32>(input.pixel));
-    if (!surf.present || surf.smoothness < 0.38) {
+    if (!surf.present || surf.smoothness < select(0.38, 0.30, ssr_glossy)) {
         return vec4<f32>(0.0);
     }
 
@@ -49,6 +52,18 @@ fn post(input: PostInput) -> vec4<f32> {
         return vec4<f32>(0.0);
     }
 
+    // Glossy cone: jitter the march direction inside a lobe that widens with roughness (stochastic GGX-like cone).
+    var Rm = R;
+    if ssr_glossy && surf.smoothness < 0.92 {
+        let rough = 1.0 - surf.smoothness;
+        let h = zn_hash22(input.pixel + vec2<f32>(f32(select(0u, frame.frame_index % 64u, temporal_ssr)) * 7.13, 3.7));
+        let up = select(vec3<f32>(0.0, 1.0, 0.0), vec3<f32>(1.0, 0.0, 0.0), abs(R.y) > 0.95);
+        let T = normalize(cross(up, R));
+        let B = cross(R, T);
+        let cone = rough * rough * 0.85;
+        let Rj = normalize(R + (T * (h.x * 2.0 - 1.0) + B * (h.y * 2.0 - 1.0)) * cone);
+        Rm = select(R, Rj, dot(Rj, N) > 0.04);
+    }
     let steps = ZP_SSR_STEPS[min(quality_mode, 2u)];
     let dims = vec2<f32>(textureDimensions(previous));
     let Q0 = P + N * 0.06;
@@ -62,7 +77,7 @@ fn post(input: PostInput) -> vec4<f32> {
     var sky_uv = input.uv;
 
     for (var i = 0; i < steps; i = i + 1) {
-        let Q = Q0 + R * t;
+        let Q = Q0 + Rm * t;
         let clip = frame.projection * (frame.view * vec4<f32>(Q, 1.0));
         if (clip.w <= 0.05) {
             break;
@@ -88,7 +103,7 @@ fn post(input: PostInput) -> vec4<f32> {
                 let thickness = clamp(0.16 + dt * 0.85, 0.16, 0.72);
                 if (delta > -0.02 && delta < thickness && (!prev_behind || delta < 0.25) && dot(S - P, N) > 0.05) {
                     let hit_surf = surface_at(vec2<i32>(ray_uv * dims));
-                    let front_face = !hit_surf.present || dot(normalize(hit_surf.normal), R) <= 0.20;
+                    let front_face = !hit_surf.present || dot(normalize(hit_surf.normal), Rm) <= 0.20;
                     if (front_face) {
                         hit = true;
                         hit_uv = ray_uv;
@@ -108,7 +123,7 @@ fn post(input: PostInput) -> vec4<f32> {
         var hi = t;
         for (var b = 0; b < 4; b = b + 1) {
             let mid = 0.5 * (lo + hi);
-            let Qm = Q0 + R * mid;
+            let Qm = Q0 + Rm * mid;
             let clip_m = frame.projection * (frame.view * vec4<f32>(Qm, 1.0));
             if (clip_m.w <= 0.05) {
                 hi = mid;
@@ -145,12 +160,12 @@ fn post(input: PostInput) -> vec4<f32> {
                   * smoothstep(1.0, 0.90, sample_uv.x)
                   * smoothstep(0.0, 0.14, sample_uv.y)
                   * smoothstep(1.0, 0.82, sample_uv.y);
-    let refl_w = smoothstep(0.42, 0.90, surf.smoothness) * edge_fade * dist_fade * dir_fade * select(0.20, 1.0, hit);
+    let refl_w = smoothstep(select(0.42, 0.30, ssr_glossy), 0.90, surf.smoothness) * edge_fade * dist_fade * dir_fade * select(0.20, 1.0, hit);
     if (refl_w <= 0.001) {
         return vec4<f32>(0.0);
     }
 
-    let hit_col = zp_ssr_sample_color(sample_uv, surf.smoothness);
+    let hit_col = zp_ssr_sample_color(sample_uv, surf.smoothness, select(0.0, t, hit));
     let ndotv = max(dot(N, -V_dir), 0.0);
     let metallic = select(0.0, clamp(-surf.data, 0.0, 1.0), surf.data < -0.05);
     let is_gem = surf.data > 0.12 && surf.data < 0.40;

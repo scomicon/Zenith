@@ -757,6 +757,14 @@ default = true
 resets = "view"
 
 [[options]]
+id = "ssr_glossy"
+name = "Glossy Reflections"
+description = "Roughness-aware reflection cone with contact-hardening blur, so semi-rough metals and wet blocks reflect softly. Needs SSR."
+type = "bool"
+default = true
+resets = "view"
+
+[[options]]
 id = "temporal_ssr"
 name = "Temporal Reflections"
 description = "Experimental history for reflections of solid terrain on stable surfaces."
@@ -1017,6 +1025,13 @@ type = "bool"
 default = true
 
 [[options]]
+id = "cloud_light_march"
+name = "Cloud Light March"
+description = "Raymarch sunlight through the volumetric clouds with three taps for deeper self-shadowing."
+type = "bool"
+default = true
+
+[[options]]
 id = "cloud_shadows"
 name = "Cloud Shadows"
 description = "Project soft drifting shadows from overhead clouds onto terrain and entities."
@@ -1124,6 +1139,13 @@ default = true
 id = "foliage_sss"
 name = "Foliage Subsurface Scattering"
 description = "Allow sunlight to softly transmit through leaves and plants."
+type = "bool"
+default = true
+
+[[options]]
+id = "body_sss"
+name = "Body Subsurface Scattering"
+description = "Soft light bleeding and back transmission on skin, wax, snow, ice and other LabPBR subsurface materials."
 type = "bool"
 default = true
 
@@ -1248,7 +1270,7 @@ items = ["page:shadows", "page:lighting", "page:water", "page:effects", "page:im
 id = "effects"
 name = "Effects"
 description = "Quality mode, ambient occlusion and light shafts."
-items = ["quality_mode", "ao_strength", "temporal_ao", "volumetric_light", "temporal_light", "ssr_enabled", "temporal_ssr"]
+items = ["quality_mode", "ao_strength", "temporal_ao", "volumetric_light", "temporal_light", "ssr_enabled", "ssr_glossy", "temporal_ssr"]
 
 [[pages]]
 id = "image"
@@ -1275,6 +1297,7 @@ items = [
     "shadow_pcss",
     "colored_shadows",
     "cloud_shadows",
+    "cloud_light_march",
     "contact_shadows",
 ]
 
@@ -1295,6 +1318,7 @@ items = [
     "displacement_cells",
     "rain_wetness",
     "foliage_sss",
+    "body_sss",
     "snow_sand_sparkle",
 ]
 

@@ -146,3 +146,12 @@ horizon-shader check pack/zenith
 node tools/build-zenith-rt.mjs outputs/zenith-rt/zenith_rt
 horizon-shader check outputs/zenith-rt/zenith_rt
 ```
+
+## Added options
+
+| Option | Type | Used by |
+|---|---|---|
+| `ssr_glossy` | bool | `post/ssr.wgsl` (roughness cone and contact-hardening blur) |
+| `body_sss` | bool | `material/lighting.wgsl` (skin, wax, snow, ice and other LabPBR subsurface materials) |
+| `cloud_light_march` | bool | `sky/sky.wgsl` (three-tap sun march through clouds) |
+

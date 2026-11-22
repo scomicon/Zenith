@@ -6,7 +6,7 @@ fn zp_rt_diffuse_direction(n: vec3<f32>, index: u32, second: bool) -> vec3<f32> 
     let t = normalize(cross(reference, n));
     let b = cross(n, t);
     let phi = f32(index) * 2.39996323 + select(0.31, 1.48, second);
-    let radius = sqrt((f32(index) + 0.72) / 3.0);
+    let radius = sqrt((f32(index) + 0.72) / 4.0);
     return n * sqrt(max(0.0, 1.0 - radius * radius)) + (t * cos(phi) + b * sin(phi)) * radius;
 }
 
@@ -22,7 +22,7 @@ fn zp_rt_diffuse_bounce(p: vec3<f32>, n: vec3<f32>) -> vec3<f32> {
             continue;
         }
         var outgoing = zn_rt_hit_radiance(first, 1.0);
-        let next = zp_rt_diffuse_direction(first.normal, (i + 1u) % 3u, true);
+        let next = zp_rt_diffuse_direction(first.normal, (i + 1u) % 4u, true);
         let next_origin = first.position + first.normal * 0.045;
         let second = trace(next_origin, next, zn_rt_reach(next_origin, next, 4.0));
         if second.distance >= 0.0 && zn_rt_hit_emission(second) <= 0.001 {
@@ -31,7 +31,7 @@ fn zp_rt_diffuse_bounce(p: vec3<f32>, n: vec3<f32>) -> vec3<f32> {
         }
         radiance += outgoing / (1.0 + 0.16 * first.distance * first.distance);
     }
-    return radiance * 0.26; // Artistic weight for filling the raster ambient term.
+    return radiance * 0.20; // Artistic weight for filling the raster ambient term.
 }
 
 struct ZpRtWindowProbe {

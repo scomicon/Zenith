@@ -5,12 +5,23 @@ fn zp_rt_opaque_reflection(p: vec3<f32>, n: vec3<f32>, direction: vec3<f32>, smo
         return vec4<f32>(0.0);
     }
     let metal_or_gem = data < -0.05 || (data > 0.12 && data < 0.40);
-    let polish = select(smoothstep(0.80, 0.96, smoothness), smoothstep(0.54, 0.84, smoothness), metal_or_gem);
+    let polish = select(smoothstep(0.70, 0.94, smoothness), smoothstep(0.40, 0.80, smoothness), metal_or_gem);
     let weight = polish * (1.0 - smoothstep(32.0, 68.0, length(p)));
     if weight <= 0.001 {
         return vec4<f32>(0.0);
     }
-    let color = zn_rt_reflection(p + n * 0.075, direction, 86.0);
+    // Glossy cone: semi-rough surfaces trace a ray jittered inside a lobe that widens with roughness.
+    var ray = direction;
+    if smoothness < 0.94 {
+        let rough = 1.0 - smoothness;
+        let h = zn_hash22(p.xz * 37.17 + vec2<f32>(p.y * 13.31, p.y * 5.77));
+        let up = select(vec3<f32>(0.0, 1.0, 0.0), vec3<f32>(1.0, 0.0, 0.0), abs(direction.y) > 0.95);
+        let t = normalize(cross(up, direction));
+        let b = cross(direction, t);
+        let jittered = normalize(direction + (t * (h.x * 2.0 - 1.0) + b * (h.y * 2.0 - 1.0)) * rough * rough * 0.9);
+        ray = select(direction, jittered, dot(jittered, n) > 0.04);
+    }
+    let color = zn_rt_reflection(p + n * 0.075, ray, 86.0);
     return vec4<f32>(color.rgb, color.a * weight);
 }
 
