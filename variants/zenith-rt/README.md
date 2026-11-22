@@ -10,4 +10,8 @@ Select **Zenith RT** in Horizon's shader menu and restart the client to request 
 
 Traced reflections jitter each ray inside a roughness cone (at least about two pixels wide) with a per-pixel R2 sequence over frames, and the result is averaged over time, so rough metals blur and distant detail is antialiased.
 
+**Soft shadows** (Reflections + Shadows and Full RT): sun and moon shadows within about 26-52 blocks are traced with five rays across the light's disc; only the penumbra pays for sixteen more. The penumbra grows with the distance to the occluder (contact hardening), the grain is tied to the surface rather than the screen, and translucent glass and water still tint the light.
+
+**Water**: with ray tracing on, the refraction under the surface is traced instead of read from the screen. The refracted ray finds the floor or object under the water, lights it with its own sun shadow ray and the water's caustics, and the path length drives the Beer-Lambert absorption. Glowing blocks under water show through, and what is off screen is still found. Farther than about 56 blocks, or where the ray finds nothing in reach, the screen-space refraction takes over.
+
 GPU cost depends on the visible terrain, water and entities. The **Reflections** mode is the default. The options **Surface Reflections**, **Water Reflections** and **Shadows** govern their respective effects in all modes.

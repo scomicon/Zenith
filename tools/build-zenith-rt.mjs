@@ -129,6 +129,11 @@ replaceOnce('material/water.wgsl', '    // 5. Crisp GGX sun / moon specular', ` 
 
     // 5. Crisp GGX sun / moon specular`);
 
+replaceOnce('material/water.wgsl', '            let refr_trans = exp(-sigma * min(refr_depth, 28.0));\n            let transmitted = refr.color * refr_trans;', `            let rt_refraction = mat_rt_water_refraction(input.position, geom_n, N, V);
+            let rt_path = select(refr_depth, rt_refraction.path, rt_refraction.weight > 0.0);
+            let refr_trans = exp(-sigma * min(rt_path, 28.0));
+            let transmitted = mix(refr.color, rt_refraction.color, rt_refraction.weight) * refr_trans;`);
+
 const reflection = 'post/ssr.wgsl';
 replaceOnce(reflection, '    let R = reflect(V_dir, N);', `    let R = reflect(V_dir, N);
     let ndotv = max(dot(N, -V_dir), 0.0);
