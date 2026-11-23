@@ -309,3 +309,11 @@ Status: `ok` written from the sources, `rewritten` rewritten from sources, `pend
 | `horizon-shaders.toml`, `post/gtao.wgsl`, `post/ssr.wgsl`, `post/sss_screen.wgsl`, `post/compose.wgsl`, `post/end_rift.wgsl`, `post/volumetric.wgsl`, `sky/clouds.wgsl` | Fourth `quality_mode` value, Ultra: every sample table gains a fourth entry | | GTAO 8 slices x 12 steps, SSR 96 steps, screen SSS 28 taps, contact shadows 28 steps, dawn mist 16, End rift 28, sun shafts 72 + 16 tail taps, clouds 96 slices with every octave in the light march; shadow map choices gain 8192 texels and 384 / 512 blocks |
 | `sky/clouds.wgsl`, `compute/cloud_bake.wgsl`, `sky/sky.wgsl`, `horizon-shaders.toml` | Cloud map at the render size, packed into one `r32uint` per texel (8-bit alpha, 12-bit log2 luminance over [-16, 8], 6-bit r and g shares of r + g + b) so it fits the pack's post-target budget; below Ultra only its top-left half-size corner is baked and read | Log-luminance colour encodings in general (e.g. G. W. Larson, LogLuv, 1998) | Ultra bakes the full map |
 | `variants/zenith-rt/compute/ray_bounce.wgsl`, `variants/zenith-rt/material/ray_terrain.wgsl` | Ultra doubles the GI rays (6) and the penumbra rays (32) | | |
+
+### Atmosphere fixes: glow around the sun, dark holes in the haze
+
+| File | Algorithm / change | Sources | Own choices |
+|---|---|---|---|
+| `post/volumetric.wgsl` | Sky pixels above the horizon keep only 35% of the near-haze shafts and no unshadowed tail (the sky model already scatters the sun in its own haze, so the glow was counted twice); the void below the horizon blends into it over 0.12 of elevation | | Mie phase peak capped at 6 (was 14) |
+| `shared/fog.wgsl` | Softer forward lobe (g 0.65), shorter morning fog window (ends by day time 0.07), ground-fog morning factor 0.70 | | |
+| `post/compose.wgsl` | Where no low-resolution volumetric sample matches a pixel's depth (a leaf against a gap), take the closest tap in depth instead of zero haze: the zero left dark dots that flickered on foliage while walking | | |

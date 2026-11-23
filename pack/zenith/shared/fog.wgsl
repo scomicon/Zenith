@@ -112,7 +112,7 @@ struct ZnMedium {
 // Morning (around sunrise) weight, 0..1: the hours when valley fog forms.
 fn zn_atmo_morning() -> f32 {
     let t = fract(frame.day_time + 0.10) - 0.10;   // 0 at day_time 0 (sunrise), negative before it
-    return smoothstep(-0.07, -0.015, t) * (1.0 - smoothstep(0.035, 0.12, t));
+    return smoothstep(-0.07, -0.015, t) * (1.0 - smoothstep(0.02, 0.07, t));
 }
 
 fn zn_atmo_medium(strength: f32) -> ZnMedium {
@@ -124,7 +124,7 @@ fn zn_atmo_medium(strength: f32) -> ZnMedium {
     let midday = smoothstep(0.30, 0.85, frame.sun_direction.y);
     var m: ZnMedium;
     m.haze = 4.2e-4 * mix(1.0, 0.62, midday) * (1.0 + 1.6 * rain + 0.55 * morning + 0.35 * dusk + 0.45 * humid) * strength;
-    m.ground = 2.6e-3 * (0.05 + 0.95 * morning + 0.55 * rain + 0.20 * humid) * strength;
+    m.ground = 2.6e-3 * (0.05 + 0.70 * morning + 0.55 * rain + 0.20 * humid) * strength;
     m.air = strength;
     return m;
 }
@@ -171,7 +171,7 @@ fn zn_atmo_hg(cos_t: f32, g: f32) -> f32 {
 
 // Mie phase of the haze: a strong forward lobe (the glow around a low sun) and a faint back lobe.
 fn zn_atmo_mie_phase(cos_t: f32) -> f32 {
-    return mix(zn_atmo_hg(cos_t, 0.72), zn_atmo_hg(cos_t, -0.25), 0.18);
+    return mix(zn_atmo_hg(cos_t, 0.65), zn_atmo_hg(cos_t, -0.25), 0.18);
 }
 
 // Below the horizon, past the loaded terrain, the sky shows the void: it is taken as the sea plane (y 63) the

@@ -314,11 +314,19 @@ fn zp_light_filtered(uv: vec2<f32>, depth: f32) -> vec3<f32> {
     let f = fract(p);
     var sum = vec3<f32>(0.0);
     var total = 0.0;
+    var nearest = vec3<f32>(0.0);
+    var nearest_gap = 1e9;
     for (var y = 0; y < 4; y++) {
         for (var x = 0; x < 4; x++) {
             let texel = clamp(base + vec2<i32>(x, y), vec2<i32>(0), dims - vec2<i32>(1));
             let tap_uv = (vec2<f32>(texel) + vec2<f32>(0.5)) / vec2<f32>(dims);
             let tap_depth = depth_at(tap_uv);
+            // The closest tap in depth, for pixels no tap matches (see below).
+            let gap = abs(tap_depth - depth) / max(max(depth, tap_depth), 1e-6) + select(0.0, 4.0, (depth > 0.0) != (tap_depth > 0.0));
+            if gap < nearest_gap {
+                nearest_gap = gap;
+                nearest = textureLoad(vlight, texel, 0).rgb;
+            }
             if ((depth > 0.0) != (tap_depth > 0.0)) { continue; }
             var range_weight = 1.0;
             if (depth > 0.0) {
@@ -334,9 +342,12 @@ fn zp_light_filtered(uv: vec2<f32>, depth: f32) -> vec3<f32> {
             total += weight;
         }
     }
-    // Subpixel geometry can have no matching half-resolution sample. Zero haze
-    // there is safer than copying a background sample over the foreground.
-    return sum / max(total, 1e-6);
+    // Subpixel geometry (a leaf against a gap, a fence post) can have no matching low-resolution sample. Zero there
+    // left dark holes in the haze, which flickered on foliage as the camera moved: take the closest tap in depth.
+    if total < 1e-3 {
+        return nearest;
+    }
+    return sum / total;
 }
 
 // World-axes unit direction of the sky at `uv` for the bobbed projection (matching volumetric.wgsl).

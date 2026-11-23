@@ -39,7 +39,9 @@ const ZP_STEPS_BY_MODE: vec4<i32> = vec4<i32>(12, 24, 40, 72);  // shadow-map ta
 const ZP_AIR_RANGE: f32 = 6000.0;     // blocks: rays to distant terrain (LODs) keep scattering past the shadow map
 const ZP_TAIL_STEPS: i32 = 8;         // unshadowed samples between the shadow map's end and the surface
 const ZP_TAIL_VISIBILITY: f32 = 0.82; // share of the sun that reaches the medium past the shadow map (own choice)
-const ZP_SUN_RADIANCE: f32 = 2.3;     // the sun's strength in the post chain's units, for the shafts (own choice)
+const ZP_SUN_RADIANCE: f32 = 2.3;
+const ZP_MIE_PHASE_CAP: f32 = 6.0;     // peak of the forward lobe: a wider, softer glow around the sun (own choice)
+const ZP_SKY_SHAFT_SHARE: f32 = 0.35;  // share of the near-haze shafts drawn over sky pixels (own choice)     // the sun's strength in the post chain's units, for the shafts (own choice)
 const ZP_SIGMA_CLEAR: f32 = 0.0014;   // scattering coefficient in fair weather, per block (keeps distant terrain crisp)
 const ZP_SIGMA_RAIN: f32 = 0.0055;    // ... in rain
 const ZP_MAX_RANGE: f32 = 160.0;      // blocks
@@ -212,11 +214,13 @@ fn zp_fog_patches(world: vec3<f32>, t: f32) -> f32 {
 // the integral of T(0, t) * sigma_s(t) * phase * visibility(t) dt, with T in closed form and visibility from the
 // shadow map over the shadowed part. Past the shadow map the march carries on to the surface unshadowed, so
 // distant terrain (LODs included) still takes the sun's glow. Returns radiance before the light's strength.
-fn zp_air_shafts(ray_dir: vec3<f32>, ray_len: f32, shadow_len: f32, has_surface: bool, air_weight: f32, jitter: f32, light_dir: vec3<f32>) -> vec3<f32> {
+// `surface` is 1 for terrain, 0 for the sky above the horizon, and grows from 0 to 1 over the void just below it,
+// so the haze's glow toward a low sun meets the sky's at the horizon without a step.
+fn zp_air_shafts(ray_dir: vec3<f32>, ray_len: f32, shadow_len: f32, surface: f32, air_weight: f32, jitter: f32, light_dir: vec3<f32>) -> vec3<f32> {
     var medium = zn_atmo_medium(atmospheric_fog);
     medium.air = medium.air * air_weight;   // The sky's own model already holds the Rayleigh air.
     let cos_t = dot(ray_dir, light_dir);
-    let mie_phase = min(zn_atmo_mie_phase(cos_t), 14.0);
+    let mie_phase = min(zn_atmo_mie_phase(cos_t), ZP_MIE_PHASE_CAP);
     let air_phase = zn_atmo_rayleigh_phase(cos_t);
     let y0 = frame.camera_position.y;
     let steps = ZP_STEPS_BY_MODE[min(quality_mode, 3u)];
@@ -239,7 +243,7 @@ fn zp_air_shafts(ray_dir: vec3<f32>, ray_len: f32, shadow_len: f32, has_surface:
         sum += lit * transmittance * scatter * dt;
     }
     // Unshadowed tail past the shadow map, toward distant terrain.
-    if has_surface && ray_len > shadow_len + 1.0 {
+    if surface > 0.001 && ray_len > shadow_len + 1.0 {
         let tail = ray_len - shadow_len;
         let tail_steps = select(ZP_TAIL_STEPS, ZP_TAIL_STEPS * 2, quality_mode >= 3u);
         for (var i = 0; i < tail_steps; i = i + 1) {
@@ -252,10 +256,12 @@ fn zp_air_shafts(ray_dir: vec3<f32>, ray_len: f32, shadow_len: f32, has_surface:
             let air = ZN_ATMO_AIR * (medium.air * zn_atmo_profile(world.y, ZN_ATMO_AIR_H));
             let scatter = vec3<f32>((haze + ground) * mie_phase) + air * air_phase;
             let transmittance = exp(-zn_atmo_optical_depth(y0, ray_dir.y, t, medium));
-            sum += ZP_TAIL_VISIBILITY * transmittance * scatter * dt;
+            sum += (ZP_TAIL_VISIBILITY * surface) * transmittance * scatter * dt;
         }
     }
-    let raw = zp_light_colour(light_dir.y) * (ZP_SUN_RADIANCE * volumetric_light / 0.6) * sum;
+    // Over the sky only the shafts' contrast is added: the sky model already scatters the sun in its own haze.
+    let sky_share = mix(ZP_SKY_SHAFT_SHARE, 1.0, surface);
+    let raw = zp_light_colour(light_dir.y) * (ZP_SUN_RADIANCE * volumetric_light / 0.6 * sky_share) * sum;
     // A soft shoulder keeps the glow around a low sun from clipping before the tone curve.
     return raw / (1.0 + zn_luma(raw) * 0.18);
 }
@@ -289,10 +295,13 @@ fn post(input: PostInput) -> vec4<f32> {
     } else {
         ray_dir = zp_sky_ray(uv);
         ray_len = ZP_MAX_RANGE;
-        if frame.eye_in == 0u {
-            // The sky's ray runs on through the haze (shared/fog.wgsl), as compose.wgsl's haze over the sky does.
-            ray_len = zn_atmo_sky_distance(ray_dir);
-            surface_dist = ray_len;
+        // Below the horizon the void stands for the sea plane (shared/fog.wgsl): its ray runs on through the haze to
+        // it, as the terrain beside it does. Above the horizon the sky model holds its own glow around the sun, so the
+        // sky keeps only the shadowed shafts of the near haze (see zp_air_shafts).
+        let void_dist = zn_atmo_void_distance(ray_dir);
+        if frame.eye_in == 0u && void_dist > 0.0 {
+            ray_len = void_dist;
+            surface_dist = void_dist;
         }
     }
     // Under water the haze is thick: shafts fade within a few tens of blocks.
@@ -318,7 +327,8 @@ fn post(input: PostInput) -> vec4<f32> {
     if (water > 0.5) {
         rgb = zp_underwater_shafts(input, ray_dir, shadow_len, jitter, light_dir, light_mask * cave_gate, d);
     } else if (cave_gate > 0.001) {
-        rgb = zp_air_shafts(ray_dir, ray_len, shadow_len, surface_dist > 0.0, select(0.0, 1.0, d > 0.0), jitter, light_dir) * (light_mask * cave_gate);
+        let surface = select(select(0.0, smoothstep(0.0, 0.12, -ray_dir.y), surface_dist > 0.0), 1.0, d > 0.0);
+        rgb = zp_air_shafts(ray_dir, ray_len, shadow_len, surface, select(0.0, 1.0, d > 0.0), jitter, light_dir) * (light_mask * cave_gate);
     }
     if !accumulate {
         return vec4<f32>(rgb, 0.0);
