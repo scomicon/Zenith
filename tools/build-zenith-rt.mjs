@@ -43,9 +43,9 @@ keep = "view"
 
 [[post]]
 file = "post/gtao.wgsl"`);
-// The depth-aware compose filter upsamples the soft volumes. Quarter-size tracing bounds the per-pixel ray cost.
-replaceOnce(manifest, 'name = "vlight"\nformat = "rgba16float"\nsize = [960, 540]',
-  'name = "vlight"\nformat = "rgba16float"\nsize = [480, 270]');
+// The volumetric light keeps the raster pack's 960x540: at 480x270 the depth-aware upsampling found no matching
+// sample on leaves and thin edges, which crawled while walking. The stained-glass shafts it adds trace only toward
+// the few window sources near the camera.
 replaceOnce(manifest, '[[post]]\nfile = "post/volumetric.wgsl"\nfiles = ["post/reprojection.wgsl"]\nname = "Volumetric light"\noutput = "vlight"\nreads = ["vlight_previous"]', `[[post]]
 file = "compute/ray_bounce.wgsl"
 files = ["post/reprojection.wgsl", "shared/ray_lighting.wgsl", "compute/ray_window_surface.wgsl"]

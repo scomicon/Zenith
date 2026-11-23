@@ -330,3 +330,9 @@ Status: `ok` written from the sources, `rewritten` rewritten from sources, `pend
 | File | Algorithm / change | Sources | Own choices |
 |---|---|---|---|
 | `variants/zenith-rt/material/ray_lights.wgsl`, `tools/build-zenith-rt.mjs` | Direct light from every listed light block (`[ray_tracing] lights = true`, `ray_lights_near`), Lambert and GGX, windowed inverse-square falloff, shadow rays across the source's body ending where they enter its block; replaces vanilla's block light term where the grid reaches | Horizon Shader API 0.2 (`ray_light*`, `packs/traced_lights` block-entry test); B. Karis, SIGGRAPH 2013 (windowed falloff, GGX); Whitted 1980 | Gain 0.86 with knee 5 blocks and range = level; light radius 0.16 block (0.42 for full cubes); 4 / 2 / 1 shadow rays under 5 / 9 / more blocks (8 near in Ultra); contributions under 0.002 luminance skipped; 24% of vanilla's light kept as bounce fill; vanilla residual for unlisted sources (lava); fade 48-60 blocks from the grid edge; untinted sources take the warm torch colour |
+
+### Zenith RT: volumetric light at the raster pack's resolution
+
+| File | Algorithm / change | Sources | Own choices |
+|---|---|---|---|
+| `tools/build-zenith-rt.mjs` | Zenith RT no longer shrinks `vlight` to 480x270: the sun shafts and haze use the raster pack's 960x540, as the depth-aware upsampling needs on foliage and thin edges | | Measured on an RX 7600 at 1080p: Volumetric light pass 0.53 -> 1.81 ms, frame +2.5 ms in a sunset forest view |
