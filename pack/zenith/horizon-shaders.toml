@@ -619,11 +619,11 @@ format = "rgba16float"
 scale = 1
 keep = "view"
 
-# Half-resolution cloud layer, baked by a [[before_world]] pass and read by the sky.
+# Cloud layer baked by a [[before_world]] pass and read by the sky: its top-left half-size corner, the whole of it in Ultra.
 [[resource]]
 name = "zp_clouds"
-format = "rgba16float"
-scale = 0.5
+format = "r32uint"
+scale = 1
 keep = "view"
 
 [[resource]]
@@ -758,9 +758,9 @@ reads = ["zp_shared"]
 [[options]]
 id = "quality_mode"
 name = "Quality mode"
-description = "Performance: fewer AO and light-shaft samples. Balanced: default. Quality: more samples, cleaner shadows in creases and shafts."
+description = "Performance: fewer AO and light-shaft samples. Balanced: default. Quality: more samples, cleaner shadows in creases and shafts. Ultra: the most samples everywhere and full-resolution clouds, whatever the cost; pair it with 8192 shadows."
 type = "choice"
-values = ["Performance", "Balanced", "Quality"]
+values = ["Performance", "Balanced", "Quality", "Ultra"]
 default = "Balanced"
 
 [[options]]
@@ -1000,7 +1000,7 @@ id = "shadow_resolution"
 name = "Shadow Resolution"
 description = "Resolution of the shadow map in texels."
 type = "choice"
-values = ["1024", "2048", "4096"]
+values = ["1024", "2048", "4096", "8192"]
 default = "2048"
 
 [[options]]
@@ -1008,7 +1008,7 @@ id = "shadow_distance"
 name = "Shadow Distance"
 description = "Half-width of the area covered by the shadow map, in blocks."
 type = "choice"
-values = ["64", "96", "128", "192", "256"]
+values = ["64", "96", "128", "192", "256", "384", "512"]
 default = "128"
 
 [[options]]

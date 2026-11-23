@@ -18,7 +18,7 @@ fn sky_hg(mu: f32, g: f32) -> f32 {
 // per-ray segment length. That removes the ray-dependent sample jitter.
 const SKY_CLOUD_BASE: f32 = 150.0;
 const SKY_CLOUD_TOP: f32 = 290.0;
-const SKY_CLOUD_STEPS: vec3<u32> = vec3<u32>(24u, 36u, 48u); // by quality_mode
+const SKY_CLOUD_STEPS: vec4<u32> = vec4<u32>(24u, 36u, 48u, 96u); // by quality_mode
 const SKY_CLOUD_RANGE: f32 = 12000.0;
 // Footprint, in blocks, of the light-march taps: the macro map past its second octave is filtered out.
 const SKY_CLOUD_LIGHT_FOOTPRINT: f32 = 90.0;
@@ -135,7 +135,7 @@ fn sky_cloud_march(d: vec3<f32>, sun: vec3<f32>, daylight: f32) -> vec4<f32> {
     }
     if !occupied { return vec4<f32>(0.0, 0.0, 0.0, 1.0); }
     // A steep ray crosses the layer in a short path, so it needs fewer slices than a grazing one.
-    var steps = SKY_CLOUD_STEPS[min(quality_mode, 2u)];
+    var steps = SKY_CLOUD_STEPS[min(quality_mode, 3u)];
     let slope = abs(d.y);
     if slope > 0.55 {
         steps = max(steps / 3u, 8u);
@@ -172,7 +172,8 @@ fn sky_cloud_march(d: vec3<f32>, sun: vec3<f32>, daylight: f32) -> vec4<f32> {
             // The tap offsets are fixed per slice, so they do not depend on the view.
             let tap = fract(f32(i) * 0.618034);
             // Self-shadowing is broad: the taps read only the two coarse octaves of the macro map.
-            let light_footprint = max(footprint, SKY_CLOUD_LIGHT_FOOTPRINT);
+            // Ultra keeps every octave in the light march too.
+            let light_footprint = select(max(footprint, SKY_CLOUD_LIGHT_FOOTPRINT), footprint, quality_mode >= 3u);
             let sun_tau = (sky_cloud_density(p + sun * (30.0 + 12.0 * tap), coverage, light_footprint, wind, false) * 1.35
                 + sky_cloud_density(p + sun * (100.0 + 30.0 * tap), coverage, light_footprint, wind, false) * 1.5);
             let multi = max(exp(-sun_tau), exp(-sun_tau * 0.28) * 0.48);
@@ -219,4 +220,31 @@ fn sky_cloud_map_direction(uv: vec2<f32>) -> vec3<f32> {
 fn sky_cloud_baked() -> bool {
     return clouds && frame.dimension == 0 && frame.eye_in != 1u && frame.eye_light_smooth.y > 0.02
         && clamp(cloud_coverage + frame.rain * 0.35, 0.0, 1.0) > 0.0;
+}
+
+// The map packs a texel into 32 bits (a render-size rgba16float map would not fit the pack's post-target budget):
+// alpha 8 bits, log2 luminance 12 bits over [-16, 8] (0.6% steps), and the r and g shares of r + g + b in
+// 6 bits each. Clouds are pale, so the chroma steps do not show; the luminance steps sit below one 8-bit step.
+fn sky_cloud_pack(c: vec4<f32>) -> u32 {
+    let rgb = max(c.rgb, vec3<f32>(0.0));
+    let sum = rgb.r + rgb.g + rgb.b;
+    let share = select(vec2<f32>(1.0 / 3.0), rgb.rg / max(sum, 1e-8), sum > 1e-8);
+    let lum = dot(rgb, vec3<f32>(0.2126, 0.7152, 0.0722));
+    let log_l = select(0.0, clamp((log2(max(lum, 1e-8)) + 16.0) / 24.0, 0.0, 1.0), lum > 1.6e-5);
+    let a = u32(round(clamp(c.a, 0.0, 1.0) * 255.0));
+    let l = u32(round(log_l * 4095.0));
+    let r = u32(round(clamp(share.x, 0.0, 1.0) * 63.0));
+    let g = u32(round(clamp(share.y, 0.0, 1.0) * 63.0));
+    return a | (l << 8u) | (r << 20u) | (g << 26u);
+}
+
+fn sky_cloud_unpack(v: u32) -> vec4<f32> {
+    let a = f32(v & 0xffu) / 255.0;
+    let l_code = (v >> 8u) & 0xfffu;
+    let r = f32((v >> 20u) & 0x3fu) / 63.0;
+    let g = f32((v >> 26u) & 0x3fu) / 63.0;
+    let share = vec3<f32>(r, g, max(1.0 - r - g, 0.0));
+    let lum = select(0.0, exp2(f32(l_code) / 4095.0 * 24.0 - 16.0), l_code > 0u);
+    let per_sum = dot(share, vec3<f32>(0.2126, 0.7152, 0.0722));
+    return vec4<f32>(share * (lum / max(per_sum, 1e-6)), a);
 }

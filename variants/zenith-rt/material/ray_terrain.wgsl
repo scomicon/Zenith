@@ -12,6 +12,7 @@ fn mat_rt_shadow_weight(p: vec3<f32>, light_dir: vec3<f32>) -> f32 {
 // wider (about 1.5 degrees), the way a sky-lit scene looks: penumbrae grow with the distance to the occluder.
 const ZN_RT_SUN_RADIUS: f32 = 0.026;
 const ZN_RT_PENUMBRA_RAYS: i32 = 16;
+override quality_mode: u32 = 1u; // Ultra (3) doubles the penumbra rays.
 
 // True when a ray toward the light is stopped by solid terrain or an entity (or points into the surface).
 fn mat_rt_blocked(origin: vec3<f32>, dir: vec3<f32>, reach: f32, normal: vec3<f32>) -> bool {
@@ -41,13 +42,14 @@ fn mat_rt_shadow(p: vec3<f32>, normal: vec3<f32>, light_dir: vec3<f32>) -> vec3<
         }
         if blocked > 0.5 && blocked < 4.5 {
             var extra = 0.0;
-            for (var i = 0; i < ZN_RT_PENUMBRA_RAYS; i++) {
-                let r = sqrt((f32(i) + 0.5) / f32(ZN_RT_PENUMBRA_RAYS)) * ZN_RT_SUN_RADIUS;
+            let penumbra_rays = select(ZN_RT_PENUMBRA_RAYS, ZN_RT_PENUMBRA_RAYS * 2, quality_mode >= 3u);
+            for (var i = 0; i < penumbra_rays; i++) {
+                let r = sqrt((f32(i) + 0.5) / f32(penumbra_rays)) * ZN_RT_SUN_RADIUS;
                 let a = spin + 0.7 + f32(i) * 2.39996323;
                 let dir = normalize(light_dir + (t * cos(a) + b * sin(a)) * r);
                 extra += select(0.0, 1.0, mat_rt_blocked(origin, dir, reach, normal));
             }
-            visibility = 1.0 - (blocked + extra) / (5.0 + f32(ZN_RT_PENUMBRA_RAYS));
+            visibility = 1.0 - (blocked + extra) / (5.0 + f32(penumbra_rays));
         } else {
             visibility = select(1.0, 0.0, blocked > 2.5);
         }

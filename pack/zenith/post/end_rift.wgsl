@@ -103,13 +103,15 @@ fn zp_er_eval_portal(
         n_steps = 8;
     } else if (quality_mode == 2u) {
         n_steps = 16;
+    } else if (quality_mode >= 3u) {
+        n_steps = 28;
     }
 
     let dt = (t_end - t_start) / f32(n_steps);
     var accum = vec3<f32>(0.0);
     var trans = 1.0;
 
-    for (var i = 0; i < 16; i = i + 1) {
+    for (var i = 0; i < 28; i = i + 1) {
         if (i >= n_steps || trans < 0.02) {
             break;
         }

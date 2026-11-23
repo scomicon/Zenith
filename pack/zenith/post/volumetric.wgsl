@@ -35,7 +35,7 @@ override colored_shadows: bool = true;
 override quality_mode: u32 = 1u;     // 0 = Performance, 1 = Balanced, 2 = Quality (manifest order)
 override atmospheric_fog: f32 = 1.0; // density of the shared medium (shared/fog.wgsl), as compose.wgsl reads it
 
-const ZP_STEPS_BY_MODE: vec3<i32> = vec3<i32>(12, 24, 40);  // shadow-map taps per pixel (own choices)
+const ZP_STEPS_BY_MODE: vec4<i32> = vec4<i32>(12, 24, 40, 72);  // shadow-map taps per pixel (own choices)
 const ZP_AIR_RANGE: f32 = 6000.0;     // blocks: rays to distant terrain (LODs) keep scattering past the shadow map
 const ZP_TAIL_STEPS: i32 = 8;         // unshadowed samples between the shadow map's end and the surface
 const ZP_TAIL_VISIBILITY: f32 = 0.82; // share of the sun that reaches the medium past the shadow map (own choice)
@@ -154,7 +154,7 @@ fn zp_underwater_shafts(input: PostInput, dir_in: vec3<f32>, ray_len: f32, jitte
     let b2 = cross(dir_in, b1);
     let spread = (zn_hash22(input.pixel + vec2<f32>(7.0, 3.0)) - vec2<f32>(0.5)) * (2.0 * ZP_WATER_BLUR_ANGLE);
     let ray_dir = normalize(dir_in + b1 * spread.x + b2 * spread.y);
-    let steps = ZP_STEPS_BY_MODE[min(quality_mode, 2u)] + ZP_WATER_EXTRA_STEPS;
+    let steps = ZP_STEPS_BY_MODE[min(quality_mode, 3u)] + ZP_WATER_EXTRA_STEPS;
     let pcf_angle = jitter * 2.0 * ZP_PI;
     let n = f32(steps);
     var lit_density = vec3<f32>(0.0);
@@ -219,7 +219,7 @@ fn zp_air_shafts(ray_dir: vec3<f32>, ray_len: f32, shadow_len: f32, has_surface:
     let mie_phase = min(zn_atmo_mie_phase(cos_t), 14.0);
     let air_phase = zn_atmo_rayleigh_phase(cos_t);
     let y0 = frame.camera_position.y;
-    let steps = ZP_STEPS_BY_MODE[min(quality_mode, 2u)];
+    let steps = ZP_STEPS_BY_MODE[min(quality_mode, 3u)];
     let n = f32(steps);
     let pcf_angle = jitter * 2.0 * ZP_PI;
     var sum = vec3<f32>(0.0);
@@ -241,7 +241,7 @@ fn zp_air_shafts(ray_dir: vec3<f32>, ray_len: f32, shadow_len: f32, has_surface:
     // Unshadowed tail past the shadow map, toward distant terrain.
     if has_surface && ray_len > shadow_len + 1.0 {
         let tail = ray_len - shadow_len;
-        let tail_steps = ZP_TAIL_STEPS;
+        let tail_steps = select(ZP_TAIL_STEPS, ZP_TAIL_STEPS * 2, quality_mode >= 3u);
         for (var i = 0; i < tail_steps; i = i + 1) {
             let u0 = (f32(i) + 0.5) / f32(tail_steps);
             let t = shadow_len + tail * u0 * u0;

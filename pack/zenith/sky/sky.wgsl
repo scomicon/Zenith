@@ -168,15 +168,16 @@ fn sky_cirrus_layer(d: vec3<f32>, background: vec3<f32>, sun: vec3<f32>, dayligh
 }
 
 fn sky_cloud_lookup(d: vec3<f32>) -> vec4<f32> {
-    let dims = vec2<i32>(textureDimensions(zp_clouds));
+    let full = vec2<i32>(textureDimensions(zp_clouds));
+    let dims = select(max(full / 2, vec2<i32>(1)), full, quality_mode >= 3u);
     let p = clamp(sky_cloud_map_uv(d), vec2<f32>(0.0), vec2<f32>(1.0)) * vec2<f32>(dims) - vec2<f32>(0.5);
     let base = vec2<i32>(floor(p));
     let f = p - floor(p);
     let top = max(dims - vec2<i32>(1), vec2<i32>(0));
-    let c00 = textureLoad(zp_clouds, clamp(base, vec2<i32>(0), top), 0);
-    let c10 = textureLoad(zp_clouds, clamp(base + vec2<i32>(1, 0), vec2<i32>(0), top), 0);
-    let c01 = textureLoad(zp_clouds, clamp(base + vec2<i32>(0, 1), vec2<i32>(0), top), 0);
-    let c11 = textureLoad(zp_clouds, clamp(base + vec2<i32>(1, 1), vec2<i32>(0), top), 0);
+    let c00 = sky_cloud_unpack(textureLoad(zp_clouds, clamp(base, vec2<i32>(0), top), 0).r);
+    let c10 = sky_cloud_unpack(textureLoad(zp_clouds, clamp(base + vec2<i32>(1, 0), vec2<i32>(0), top), 0).r);
+    let c01 = sky_cloud_unpack(textureLoad(zp_clouds, clamp(base + vec2<i32>(0, 1), vec2<i32>(0), top), 0).r);
+    let c11 = sky_cloud_unpack(textureLoad(zp_clouds, clamp(base + vec2<i32>(1, 1), vec2<i32>(0), top), 0).r);
     return mix(mix(c00, c10, f.x), mix(c01, c11, f.x), f.y);
 }
 

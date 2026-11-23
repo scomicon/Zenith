@@ -6,7 +6,9 @@
 // The dispatch is the map's size at 1080p; at larger render sizes each invocation bakes every texel a whole
 // dispatch apart, so no invocation is launched only to leave.
 fn compute(input: ComputeInput) {
-    let dims = textureDimensions(zp_clouds);
+    // The map is render-sized; below Ultra only its top-left half-size corner is baked and read.
+    let full = textureDimensions(zp_clouds);
+    let dims = select(max(full / 2u, vec2<u32>(1u)), full, quality_mode >= 3u);
     if !input.in_bounds || !sky_cloud_baked() {
         return;
     }
@@ -16,7 +18,7 @@ fn compute(input: ComputeInput) {
         for (var x = input.cell.x; x < dims.x; x += input.size.x) {
             let uv = (vec2<f32>(f32(x), f32(y)) + vec2<f32>(0.5)) / vec2<f32>(dims);
             let d = sky_cloud_map_direction(uv);
-            textureStore(zp_clouds, vec2<i32>(i32(x), i32(y)), sky_cloud_march(d, sun, daylight));
+            textureStore(zp_clouds, vec2<i32>(i32(x), i32(y)), vec4<u32>(sky_cloud_pack(sky_cloud_march(d, sun, daylight)), 0u, 0u, 0u));
         }
     }
 }

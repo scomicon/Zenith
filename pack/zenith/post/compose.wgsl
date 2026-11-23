@@ -29,7 +29,7 @@ override atmospheric_fog: f32 = 1.0;
 const ZP_AO_POWER: f32 = 1.6;
 const ZP_ATMO_HORIZON: vec2<f32> = vec2<f32>(0.0, 0.22); // elevations of the sky the aerial perspective takes
 const ZP_ATMO_AMBIENT_GAIN: f32 = 0.92;
-const ZP_CONTACT_STEPS: vec3<i32> = vec3<i32>(8, 12, 16);
+const ZP_CONTACT_STEPS: vec4<i32> = vec4<i32>(8, 12, 16, 28);
 
 // J. Jimenez, X. Wu, A. Pesce, A. Jarosz, SIGGRAPH 2016: Multi-bounce GTAO approximation.
 fn zp_gtao_multibounce(visibility: f32, albedo: vec3<f32>) -> vec3<f32> {
@@ -85,7 +85,7 @@ fn zp_contact_shadow(input: PostInput, P: vec3<f32>, dist: f32, colour: vec3<f32
         return 0.0;
     }
 
-    let steps = ZP_CONTACT_STEPS[min(quality_mode, 2u)];
+    let steps = ZP_CONTACT_STEPS[min(quality_mode, 3u)];
     let max_len = mix(0.55, 0.95, clamp(dist / 24.0, 0.0, 1.0));
     let Q0 = P + N * (0.025 + 0.0018 * dist);
     let dt = max_len / f32(steps);
@@ -388,7 +388,7 @@ fn zp_dawn_mist(
     let span = t_end - t_start;
     if span <= 0.15 { return colour; }
 
-    let n_steps = select(select(8u, 10u, quality_mode >= 2u), 6u, quality_mode == 0u);
+    let n_steps = select(select(select(8u, 10u, quality_mode >= 2u), 16u, quality_mode >= 3u), 6u, quality_mode == 0u);
     let inv_n = 1.0 / f32(n_steps);
 
     let drift = zn_water_mist_drift(frame.time);
@@ -400,7 +400,7 @@ fn zp_dawn_mist(
 
     var accum = vec3<f32>(0.0);
     var trans = 1.0;
-    for (var i = 0u; i < 10u; i = i + 1u) {
+    for (var i = 0u; i < 16u; i = i + 1u) {
         if i >= n_steps || trans < 0.38 { break; }
         let u0 = f32(i) * inv_n;
         let u1 = f32(i + 1u) * inv_n;

@@ -19,8 +19,8 @@ override temporal_ao: bool = false;
 override quality_mode: u32 = 1u;     // 0 = Performance, 1 = Balanced, 2 = Quality (manifest order)
 
 // Slices and steps per slice by mode (own choices): 2x4, 3x6, 4x8.
-const ZP_SLICES_BY_MODE: vec3<i32> = vec3<i32>(2, 3, 4);
-const ZP_STEPS_BY_MODE: vec3<i32> = vec3<i32>(4, 6, 8);
+const ZP_SLICES_BY_MODE: vec4<i32> = vec4<i32>(2, 3, 4, 8);
+const ZP_STEPS_BY_MODE: vec4<i32> = vec4<i32>(4, 6, 8, 12);
 const ZP_RADIUS: f32 = 1.5;          // world-space radius, blocks
 const ZP_FALLOFF_FROM: f32 = 0.6;    // samples nearer than this fraction of the radius count fully
 const ZP_MAX_RADIUS_PX: f32 = 96.0;  // cap of the screen-space radius, in pixels of the world's picture
@@ -155,7 +155,7 @@ fn post(input: PostInput) -> vec4<f32> {
     let res = frame.resolution;
     let falloff_range = radius * (1.0 - ZP_FALLOFF_FROM);
 
-    let mode_idx = min(quality_mode, 2u);
+    let mode_idx = min(quality_mode, 3u);
     let zp_slices = ZP_SLICES_BY_MODE[mode_idx];
     let zp_steps = ZP_STEPS_BY_MODE[mode_idx];
 

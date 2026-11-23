@@ -6,7 +6,7 @@ override temporal_ssr: bool = false;
 override ssr_glossy: bool = true;
 override quality_mode: u32 = 1u; // 0 = Performance, 1 = Balanced, 2 = Quality (manifest order)
 
-const ZP_SSR_STEPS: vec3<i32> = vec3<i32>(24, 36, 48);
+const ZP_SSR_STEPS: vec4<i32> = vec4<i32>(24, 36, 48, 96);
 
 fn zp_ssr_sample_color(uv: vec2<f32>, smoothness: f32, hit_dist: f32) -> vec3<f32> {
     let dims = vec2<f32>(textureDimensions(previous));
@@ -97,7 +97,7 @@ fn post(input: PostInput) -> vec4<f32> {
         let Rj = normalize(R + (T * (h.x * 2.0 - 1.0) + B * (h.y * 2.0 - 1.0)) * cone);
         Rm = select(R, Rj, dot(Rj, N) > 0.04);
     }
-    let steps = ZP_SSR_STEPS[min(quality_mode, 2u)];
+    let steps = ZP_SSR_STEPS[min(quality_mode, 3u)];
     let dims = vec2<f32>(textureDimensions(previous));
     let Q0 = P + N * 0.06;
     let jitter = zn_ign(input.pixel, select(0u, frame.frame_index % 64u, temporal_ssr));

@@ -6,7 +6,7 @@ override body_sss: bool = true;
 // pass declares quality_mode.
 
 const ZP_SSS_CLASS: f32 = 0.45;
-const ZP_SSS_TAPS: vec3<i32> = vec3<i32>(8, 12, 16);
+const ZP_SSS_TAPS: vec4<i32> = vec4<i32>(8, 12, 16, 28);
 // Scatter width in blocks per channel (red travels farthest, blue least).
 const ZP_SSS_WIDTH: vec3<f32> = vec3<f32>(0.10, 0.045, 0.025);
 
@@ -30,7 +30,7 @@ fn zp_sss_apply(input: PostInput) -> vec4<f32> {
         return base;
     }
 
-    let taps = ZP_SSS_TAPS[min(quality_mode, 2u)];
+    let taps = ZP_SSS_TAPS[min(quality_mode, 3u)];
     let rot = zn_ign(input.pixel, 0u) * 6.2831853;
     var sum = base.rgb;
     var wsum = vec3<f32>(1.0);

@@ -9,6 +9,11 @@ override ambient_strength: f32 = 1.0;
 override gi_strength: f32 = 1.0;
 
 const ZP_GI_RAYS: u32 = 3u;
+override quality_mode: u32 = 1u; // Ultra (3) doubles the GI rays.
+
+fn zp_rt_gi_rays() -> u32 {
+    return select(ZP_GI_RAYS, ZP_GI_RAYS * 2u, quality_mode >= 3u);
+}
 const ZP_GI_RANGE: f32 = 40.0;
 
 fn zp_rt_hash(p: vec2<i32>) -> u32 {
@@ -21,7 +26,7 @@ fn zp_rt_hash(p: vec2<i32>) -> u32 {
 fn zp_rt_rand2(texel: vec2<i32>, ray: u32) -> vec2<f32> {
     let h = zp_rt_hash(texel);
     let offset = vec2<f32>(f32(h & 0xffffu), f32(h >> 16u)) / 65536.0;
-    let k = f32(frame.frame_index * ZP_GI_RAYS + ray);
+    let k = f32(frame.frame_index * zp_rt_gi_rays() + ray);
     return fract(offset + k * vec2<f32>(0.7548776662, 0.5698402909));
 }
 
@@ -83,7 +88,8 @@ fn zp_rt_gi(p: vec3<f32>, n: vec3<f32>, texel: vec2<i32>) -> vec3<f32> {
     let origin = p + n * 0.05;
     var bounce = vec3<f32>(0.0);
     var escaped = 0.0;
-    for (var i = 0u; i < ZP_GI_RAYS; i++) {
+    let rays = zp_rt_gi_rays();
+    for (var i = 0u; i < rays; i++) {
         let dir = zp_rt_cosine_direction(n, zp_rt_rand2(texel, i));
         let reach = zn_rt_reach(origin, dir, ZP_GI_RANGE);
         if reach <= 0.4 { escaped += 1.0; continue; }
@@ -92,7 +98,7 @@ fn zp_rt_gi(p: vec3<f32>, n: vec3<f32>, texel: vec2<i32>) -> vec3<f32> {
         // Falloff with the path length, so a far wall does not light a surface like a near one.
         bounce += min(zp_rt_hit_lit(hit) / (1.0 + 0.012 * hit.distance * hit.distance), vec3<f32>(3.0));
     }
-    let count = f32(ZP_GI_RAYS);
+    let count = f32(rays);
     let sky_share = escaped / count;
     // The raster ambient assumed an open hemisphere (scaled by the vertex sky light); the traced share replaces it.
     let shortfall = zp_rt_ambient(n) * (sky_share - pow(sky_share, 1.35));
