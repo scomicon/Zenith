@@ -86,8 +86,8 @@ replaceOnce(manifest, '[[resource]]\nname = "zp_hiz"\nformat = "r32float"\nsize 
 replaceOnce(manifest, '[[post]]\nfile = "post/hiz.wgsl"\nname = "Hi-Z depth"\ncompute = true\ndispatch = [480, 270, 1]\nworkgroup = [8, 8, 1]\nwrites = ["zp_hiz"]\n\n', '');
 replaceOnce(manifest, 'reads = ["zp_reflection_previous", "zp_hiz"]', 'reads = ["zp_reflection_previous"]');
 replaceOnce(manifest, '"ssr_enabled", "ssr_glossy", "temporal_ssr"]', '"ssr_enabled", "ssr_glossy", "temporal_ssr", "rt_lighting"]');
-replaceOnce(manifest, 'description = "Strength of light shafts. 0 turns them off. Needs shadows."',
-  'description = "Strength of light shafts. Solar shafts use shadow maps. Local stained-glass shafts use Reflections + Shadows or Full RT."');
+replaceOnce(manifest, 'description = "Strength of sunlight scattered in the haze: light shafts and the glow around a low sun. 0 turns them off. Needs shadows."',
+  'description = "Strength of sunlight scattered in the haze: light shafts and the glow around a low sun (shadow maps). Local stained-glass shafts use Reflections + Shadows or Full RT."');
 
 const shadows = 'material/shadows.wgsl';
 replaceOnce(shadows, 'if !shadows_enabled || frame.has_shadow == 0u {', 'if !shadows_enabled {');
@@ -170,10 +170,10 @@ replaceOnce(reflection, ssr.slice(start, end), `    let hit_col = zp_ssr_sample_
 
 replaceOnce('post/compose.wgsl', '    if (input.depth > 0.0 && (ao_strength > 0.0 || contact_shadows || atmospheric_fog > 0.001)) {',
   '    if input.depth > 0.0 {');
-replaceOnce('post/compose.wgsl', '        colour = zp_atmospheric_fog(P, dist, colour, climate);',
+replaceOnce('post/compose.wgsl', '        colour = zp_atmospheric_fog(P, dist, colour, climate, true);',
   `        let bounce = zp_rt_bounce_filtered(input.uv, dist);
         colour += zp_estimate_albedo(colour) * bounce + zp_rt_glass_filtered(input.uv, dist);
-        colour = zp_atmospheric_fog(P, dist, colour, climate);`);
+        colour = zp_atmospheric_fog(P, dist, colour, climate, true);`);
 
 const material = 'material/material.wgsl';
 replaceOnce(material, '        } else if is_reactive {', `        } else if !is_reactive && input.emission >= 0.66 {

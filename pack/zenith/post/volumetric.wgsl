@@ -33,8 +33,13 @@ override temporal_light: bool = false;
 override colored_shadows: bool = true;
 
 override quality_mode: u32 = 1u;     // 0 = Performance, 1 = Balanced, 2 = Quality (manifest order)
+override atmospheric_fog: f32 = 1.0; // density of the shared medium (shared/fog.wgsl), as compose.wgsl reads it
 
-const ZP_STEPS_BY_MODE: vec3<i32> = vec3<i32>(8, 16, 24);   // shadow-map taps per pixel (own choices)
+const ZP_STEPS_BY_MODE: vec3<i32> = vec3<i32>(12, 24, 40);  // shadow-map taps per pixel (own choices)
+const ZP_AIR_RANGE: f32 = 6000.0;     // blocks: rays to distant terrain (LODs) keep scattering past the shadow map
+const ZP_TAIL_STEPS: i32 = 8;         // unshadowed samples between the shadow map's end and the surface
+const ZP_TAIL_VISIBILITY: f32 = 0.82; // share of the sun that reaches the medium past the shadow map (own choice)
+const ZP_SUN_RADIANCE: f32 = 2.3;     // the sun's strength in the post chain's units, for the shafts (own choice)
 const ZP_SIGMA_CLEAR: f32 = 0.0014;   // scattering coefficient in fair weather, per block (keeps distant terrain crisp)
 const ZP_SIGMA_RAIN: f32 = 0.0055;    // ... in rain
 const ZP_MAX_RANGE: f32 = 160.0;      // blocks
@@ -141,6 +146,120 @@ fn zp_shadow_lit(pos: vec3<f32>, blur: f32, angle: f32) -> vec3<f32> {
     return vec3<f32>(sum * 0.5);
 }
 
+// Under water: the former single-scattering march, unchanged (blurred ray, caustic beams, spectral absorption).
+fn zp_underwater_shafts(input: PostInput, dir_in: vec3<f32>, ray_len: f32, jitter: f32, light_dir: vec3<f32>, gate: f32, d: f32) -> vec3<f32> {
+    // Angular blur of the ray, perpendicular to it; the per-pixel offsets average out in compose's 4x4 box.
+    let up = select(vec3<f32>(0.0, 1.0, 0.0), vec3<f32>(1.0, 0.0, 0.0), abs(dir_in.y) > 0.99);
+    let b1 = normalize(cross(up, dir_in));
+    let b2 = cross(dir_in, b1);
+    let spread = (zn_hash22(input.pixel + vec2<f32>(7.0, 3.0)) - vec2<f32>(0.5)) * (2.0 * ZP_WATER_BLUR_ANGLE);
+    let ray_dir = normalize(dir_in + b1 * spread.x + b2 * spread.y);
+    let steps = ZP_STEPS_BY_MODE[min(quality_mode, 2u)] + ZP_WATER_EXTRA_STEPS;
+    let pcf_angle = jitter * 2.0 * ZP_PI;
+    let n = f32(steps);
+    var lit_density = vec3<f32>(0.0);
+    let refr_light = zp_underwater_refracted_dir(light_dir);
+    if gate > 0.001 {
+        for (var i = 0; i < steps; i = i + 1) {
+            let u = (f32(i) + jitter) / n;
+            let t = ray_len * u * u;
+            let dt = ray_len * 2.0 * u / n;
+            let pos = ray_dir * t;
+            let world_pos = frame.camera_position + pos;
+            var lit = zp_shadow_lit(pos, 1.0, pcf_angle + f32(i) * 2.399963);
+            lit = mix(lit, vec3<f32>(ZP_WATER_LIT_MID), ZP_WATER_LIT_PULL);
+            lit = lit * zp_underwater_beam(world_pos, pos, t, refr_light);
+            let density = min(exp(-max(world_pos.y - ZP_SEA_LEVEL, 0.0) * ZP_HEIGHT_FALLOFF), 1.5);
+            lit_density = lit_density + lit * (density * dt);
+        }
+    }
+    let sigma = mix(ZP_SIGMA_CLEAR, ZP_SIGMA_RAIN, frame.rain);
+    let cos_uw = dot(ray_dir, refr_light);
+    let phase = min(mix(zp_hg(cos_uw, 0.68), zp_hg(cos_uw, -0.18), 0.16) * 4.0 * ZP_PI, 4.5);
+    let surface_scale = select(0.38, 0.68, d > 0.0);
+    let light = zp_light_colour(light_dir.y) * gate * ZP_WATER_LIGHT;
+    let raw_rgb = light * lit_density * (sigma * phase * volumetric_light * surface_scale);
+    return min(raw_rgb / (1.0 + zn_luma(raw_rgb) * 1.8), vec3<f32>(2.5));
+}
+
+// Rolling ground fog: two octaves of 3D value noise drifting with the wind (own choice), 0.35..1.65.
+fn zp_fog_hash(p: vec3<f32>) -> f32 {
+    let q = fract(p * vec3<f32>(0.1031, 0.1030, 0.0973));
+    let r = q + dot(q, q.yxz + vec3<f32>(33.33));
+    return fract((r.x + r.y) * r.z);
+}
+
+fn zp_fog_noise(p: vec3<f32>) -> f32 {
+    let i = floor(p);
+    let f = fract(p);
+    let u = f * f * (3.0 - 2.0 * f);
+    let a = mix(mix(zp_fog_hash(i), zp_fog_hash(i + vec3<f32>(1.0, 0.0, 0.0)), u.x),
+        mix(zp_fog_hash(i + vec3<f32>(0.0, 1.0, 0.0)), zp_fog_hash(i + vec3<f32>(1.0, 1.0, 0.0)), u.x), u.y);
+    let b = mix(mix(zp_fog_hash(i + vec3<f32>(0.0, 0.0, 1.0)), zp_fog_hash(i + vec3<f32>(1.0, 0.0, 1.0)), u.x),
+        mix(zp_fog_hash(i + vec3<f32>(0.0, 1.0, 1.0)), zp_fog_hash(i + vec3<f32>(1.0, 1.0, 1.0)), u.x), u.y);
+    return mix(a, b, u.z);
+}
+
+fn zp_fog_patches(world: vec3<f32>, t: f32) -> f32 {
+    let drift = zn_water_mist_drift(frame.time) * 3.0;
+    let q = vec3<f32>(world.x * 0.018 + drift.x, world.y * 0.05, world.z * 0.018 + drift.y);
+    let n = zp_fog_noise(q) * 0.65 + zp_fog_noise(q * 2.7 + vec3<f32>(11.3, 4.1, 7.7)) * 0.35;
+    // Fade the patches out with distance, where one step spans many of them.
+    return mix(1.0, 0.35 + 1.3 * smoothstep(0.25, 0.75, n), 1.0 - smoothstep(120.0, 260.0, t));
+}
+
+// Sunlight scattered toward the camera by the shared medium (shared/fog.wgsl), single scattering:
+// the integral of T(0, t) * sigma_s(t) * phase * visibility(t) dt, with T in closed form and visibility from the
+// shadow map over the shadowed part. Past the shadow map the march carries on to the surface unshadowed, so
+// distant terrain (LODs included) still takes the sun's glow. Returns radiance before the light's strength.
+fn zp_air_shafts(ray_dir: vec3<f32>, ray_len: f32, shadow_len: f32, has_surface: bool, air_weight: f32, jitter: f32, light_dir: vec3<f32>) -> vec3<f32> {
+    var medium = zn_atmo_medium(atmospheric_fog);
+    medium.air = medium.air * air_weight;   // The sky's own model already holds the Rayleigh air.
+    let cos_t = dot(ray_dir, light_dir);
+    let mie_phase = min(zn_atmo_mie_phase(cos_t), 14.0);
+    let air_phase = zn_atmo_rayleigh_phase(cos_t);
+    let y0 = frame.camera_position.y;
+    let steps = ZP_STEPS_BY_MODE[min(quality_mode, 2u)];
+    let n = f32(steps);
+    let pcf_angle = jitter * 2.0 * ZP_PI;
+    var sum = vec3<f32>(0.0);
+    for (var i = 0; i < steps; i = i + 1) {
+        let u = (f32(i) + jitter) / n;
+        let t = shadow_len * u * u;
+        let dt = shadow_len * 2.0 * u / n;
+        let pos = ray_dir * t;
+        let world = frame.camera_position + pos;
+        let lit = zp_shadow_lit(pos, 0.0, pcf_angle + f32(i) * 2.399963);
+        if max(lit.r, max(lit.g, lit.b)) <= 0.0 { continue; }
+        let haze = medium.haze * zn_atmo_profile(world.y, ZN_ATMO_HAZE_H);
+        let ground = medium.ground * zn_atmo_profile(world.y, ZN_ATMO_GROUND_H) * zp_fog_patches(world, t);
+        let air = ZN_ATMO_AIR * (medium.air * zn_atmo_profile(world.y, ZN_ATMO_AIR_H));
+        let scatter = vec3<f32>((haze + ground) * mie_phase) + air * air_phase;
+        let transmittance = exp(-zn_atmo_optical_depth(y0, ray_dir.y, t, medium));
+        sum += lit * transmittance * scatter * dt;
+    }
+    // Unshadowed tail past the shadow map, toward distant terrain.
+    if has_surface && ray_len > shadow_len + 1.0 {
+        let tail = ray_len - shadow_len;
+        let tail_steps = ZP_TAIL_STEPS;
+        for (var i = 0; i < tail_steps; i = i + 1) {
+            let u0 = (f32(i) + 0.5) / f32(tail_steps);
+            let t = shadow_len + tail * u0 * u0;
+            let dt = tail * 2.0 * u0 / f32(tail_steps);
+            let world = frame.camera_position + ray_dir * t;
+            let haze = medium.haze * zn_atmo_profile(world.y, ZN_ATMO_HAZE_H);
+            let ground = medium.ground * zn_atmo_profile(world.y, ZN_ATMO_GROUND_H);
+            let air = ZN_ATMO_AIR * (medium.air * zn_atmo_profile(world.y, ZN_ATMO_AIR_H));
+            let scatter = vec3<f32>((haze + ground) * mie_phase) + air * air_phase;
+            let transmittance = exp(-zn_atmo_optical_depth(y0, ray_dir.y, t, medium));
+            sum += ZP_TAIL_VISIBILITY * transmittance * scatter * dt;
+        }
+    }
+    let raw = zp_light_colour(light_dir.y) * (ZP_SUN_RADIANCE * volumetric_light / 0.6) * sum;
+    // A soft shoulder keeps the glow around a low sun from clipping before the tone curve.
+    return raw / (1.0 + zn_luma(raw) * 0.18);
+}
+
 fn post(input: PostInput) -> vec4<f32> {
     // Overworld sunlight/moonlight shafts have no meaning in the End or Nether.
     // Their synthetic celestial directions otherwise wash both sky and terrain grey.
@@ -156,9 +275,10 @@ fn post(input: PostInput) -> vec4<f32> {
         return vec4<f32>(0.0);
     }
 
-    // The ray: to the surface, or to the end of the range through the sky.
+    // The ray: to the surface (any distance: the march past the shadow map carries on unshadowed), or through the
+    // sky to the end of the shadow map.
     var ray_dir: vec3<f32>;
-    var ray_len = ZP_MAX_RANGE;
+    var ray_len = ZP_AIR_RANGE;
     var surface_dist = 0.0;
     if (d > 0.0) {
         let p = view_position(uv, d);
@@ -168,11 +288,17 @@ fn post(input: PostInput) -> vec4<f32> {
         ray_len = min(len, ray_len);
     } else {
         ray_dir = zp_sky_ray(uv);
+        ray_len = ZP_MAX_RANGE;
+        if frame.eye_in == 0u {
+            // The sky's ray runs on through the haze (shared/fog.wgsl), as compose.wgsl's haze over the sky does.
+            ray_len = zn_atmo_sky_distance(ray_dir);
+            surface_dist = ray_len;
+        }
     }
     // Under water the haze is thick: shafts fade within a few tens of blocks.
     let water = select(0.0, 1.0, frame.eye_in == 1u);
-    ray_len = min(ray_len, mix(ZP_MAX_RANGE, ZP_WATER_RANGE, water));
-    ray_len = min(ray_len, frame.shadow_distance * 0.95);
+    ray_len = min(ray_len, mix(ZP_AIR_RANGE, ZP_WATER_RANGE, water));
+    let shadow_len = min(ray_len, frame.shadow_distance * 0.95);
     if (ray_len < 0.5) {
         return vec4<f32>(0.0);
     }
@@ -188,48 +314,12 @@ fn post(input: PostInput) -> vec4<f32> {
         accumulate = surface.present && surface.data <= 0.5;
     }
     let jitter = zn_ign(input.pixel, select(0u, frame.frame_index % 64u, accumulate));
-    if (water > 0.01) {
-        // Angular blur of the ray, perpendicular to it; the per-pixel offsets average out in compose's 4x4 box.
-        let up = select(vec3<f32>(0.0, 1.0, 0.0), vec3<f32>(1.0, 0.0, 0.0), abs(ray_dir.y) > 0.99);
-        let b1 = normalize(cross(up, ray_dir));
-        let b2 = cross(ray_dir, b1);
-        let spread = (zn_hash22(input.pixel + vec2<f32>(7.0, 3.0)) - vec2<f32>(0.5)) * (2.0 * ZP_WATER_BLUR_ANGLE * water);
-        ray_dir = normalize(ray_dir + b1 * spread.x + b2 * spread.y);
+    var rgb = vec3<f32>(0.0);
+    if (water > 0.5) {
+        rgb = zp_underwater_shafts(input, ray_dir, shadow_len, jitter, light_dir, light_mask * cave_gate, d);
+    } else if (cave_gate > 0.001) {
+        rgb = zp_air_shafts(ray_dir, ray_len, shadow_len, surface_dist > 0.0, select(0.0, 1.0, d > 0.0), jitter, light_dir) * (light_mask * cave_gate);
     }
-    let zp_steps = ZP_STEPS_BY_MODE[min(quality_mode, 2u)] + select(0, ZP_WATER_EXTRA_STEPS, water > 0.5);
-    let pcf_angle = jitter * 2.0 * ZP_PI;
-    let n = f32(zp_steps);
-    var lit_density = vec3<f32>(0.0);
-    let refr_light = zp_underwater_refracted_dir(light_dir);
-    if (cave_gate > 0.001) {
-        for (var i = 0; i < zp_steps; i = i + 1) {
-            let u = (f32(i) + jitter) / n;
-            let t = ray_len * u * u;
-            let dt = ray_len * 2.0 * u / n;
-            let pos = ray_dir * t;
-            let world_pos = frame.camera_position + pos;
-
-            var lit = zp_shadow_lit(pos, water, pcf_angle + f32(i) * 2.399963);
-            lit = mix(lit, vec3<f32>(ZP_WATER_LIT_MID), ZP_WATER_LIT_PULL * water);
-            if water > 0.5 {
-                lit = lit * zp_underwater_beam(world_pos, pos, t, refr_light);
-            }
-            let world_y = world_pos.y;
-            let density = min(exp(-max(world_y - ZP_SEA_LEVEL, 0.0) * ZP_HEIGHT_FALLOFF), 1.5);
-            lit_density = lit_density + lit * (density * dt);
-        }
-    }
-
-    let sigma = mix(ZP_SIGMA_CLEAR, ZP_SIGMA_RAIN, frame.rain);
-    let cos_air = dot(ray_dir, light_dir);
-    let cos_uw = dot(ray_dir, refr_light);
-    let phase_air = min(mix(zp_hg(cos_air, 0.50), zp_hg(cos_air, -0.25), 0.25) * 4.0 * ZP_PI, 3.8);
-    let phase_uw = min(mix(zp_hg(cos_uw, 0.68), zp_hg(cos_uw, -0.18), 0.16) * 4.0 * ZP_PI, 4.5);
-    let phase = mix(phase_air, phase_uw, water);
-    let surface_scale = select(select(0.72, 0.45, d <= 0.0), select(0.68, 0.38, d <= 0.0), water > 0.5);
-    let light = zp_light_colour(light_dir.y) * (light_mask * cave_gate) * mix(vec3<f32>(1.0), ZP_WATER_LIGHT, water);
-    let raw_rgb = light * lit_density * (sigma * phase * volumetric_light * surface_scale);
-    let rgb = min(raw_rgb / (1.0 + zn_luma(raw_rgb) * 1.8), vec3<f32>(2.5));
     if !accumulate {
         return vec4<f32>(rgb, 0.0);
     }

@@ -11,6 +11,7 @@
 override sky_saturation: f32 = 1.0;
 override cirrus_clouds: bool = true;
 override aurora: bool = true;
+override atmospheric_fog: f32 = 1.0;
 
 const SKY_GROUND: f32 = 6360.0;
 const SKY_TOP: f32 = 6460.0;
@@ -239,8 +240,11 @@ fn sky(input: SkyInput) -> vec4<f32> {
     // twice acos(GROUND/TOP) bounds the solar depression at the last sunlit point.
     // sin of that angle is below 0.35, so the single-scatter term is zero deeper at night.
     var atmosphere = SkyAtmosphere(vec3<f32>(0.0), vec3<f32>(1.0));
-    if horizon > 0.0 && sun.y > -0.35 {
-        atmosphere = sky_atmosphere(d, sun);
+    // With the pack's haze on, the sky below the horizon (seen past the loaded terrain) continues the horizon's
+    // colour: compose.wgsl lays the same haze over it as over the terrain beside it.
+    let haze_below = atmospheric_fog > 0.001;
+    if (horizon > 0.0 || haze_below) && sun.y > -0.35 {
+        atmosphere = sky_atmosphere(normalize(vec3<f32>(d.x, max(d.y, 0.0), d.z) + vec3<f32>(0.0, 1e-4, 0.0)), sun);
     }
     // Original airglow/indirect-night floor; deliberately not a multiple-
     // scattering solver. day_time rotates the stars; solar elevation sets dusk.
@@ -275,7 +279,7 @@ fn sky(input: SkyInput) -> vec4<f32> {
     let cool_fog = vec3<f32>(0.55, 0.74, 1.20) * fog_lum;
     let tinted_fog = mix(cool_fog, fog_raw, smoothstep(-0.04, 0.10, sun.y));
     let air_fog = tinted_fog * (0.12 + 0.45 * smoothstep(-0.08, 0.14, sun.y));
-    color = mix(air_fog, color, horizon);
+    color = mix(air_fog, color, select(horizon, 1.0, haze_below));
     // Original overcast extinction/art direction, always in linear light.
     let overcast = mix(vec3<f32>(0.008, 0.012, 0.022), vec3<f32>(0.20, 0.24, 0.29), daylight);
     color = mix(color, overcast, clamp(frame.rain * 0.68 + frame.thunder * 0.22, 0.0, 0.9));

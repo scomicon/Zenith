@@ -771,7 +771,7 @@ default = 0.6
 min = 0.0
 max = 3.0
 step = 0.1
-description = "Strength of light shafts. 0 turns them off. Needs shadows."
+description = "Strength of sunlight scattered in the haze: light shafts and the glow around a low sun. 0 turns them off. Needs shadows."
 resets = "view"
 
 [[options]]
@@ -949,7 +949,7 @@ default = true
 [[options]]
 id = "atmospheric_fog"
 name = "Height Fog & Aerial Perspective"
-description = "Valley mist, dawn mist over water, distant haze and outdoor biome lighting. 0 turns them off."
+description = "Density of the haze, valley fog and aerial perspective (distant terrain and the horizon), dawn mist over water and outdoor biome lighting. 0 turns them off."
 type = "float"
 default = 1.0
 min = 0.0

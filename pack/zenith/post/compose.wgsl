@@ -27,6 +27,8 @@ override quality_mode: u32 = 1u;
 override atmospheric_fog: f32 = 1.0;
 
 const ZP_AO_POWER: f32 = 1.6;
+const ZP_ATMO_HORIZON: vec2<f32> = vec2<f32>(0.0, 0.22); // elevations of the sky the aerial perspective takes
+const ZP_ATMO_AMBIENT_GAIN: f32 = 0.92;
 const ZP_CONTACT_STEPS: vec3<i32> = vec3<i32>(8, 12, 16);
 
 // J. Jimenez, X. Wu, A. Pesce, A. Jarosz, SIGGRAPH 2016: Multi-bounce GTAO approximation.
@@ -189,23 +191,23 @@ fn zp_fbm3(p: vec3<f32>) -> f32 {
 
 // Analytical exponential height fog (Wenzel, GDC 2006) & aerial perspective with 3D domain-warped volumetric wisps.
 // Leaves caves (low eye sky-light), underwater, vision effects, render boundary, and The End untouched.
-fn zp_atmospheric_fog(P: vec3<f32>, dist: f32, colour: vec3<f32>, climate: vec3<f32>) -> vec3<f32> {
-    if (atmospheric_fog <= 0.001 || frame.eye_in != 0u || frame.blindness > 0.0 || frame.darkness > 0.0 || dist < 14.0) {
+fn zp_atmospheric_fog(P: vec3<f32>, dist: f32, colour_in: vec3<f32>, climate: vec3<f32>, surface: bool) -> vec3<f32> {
+    var colour = colour_in;
+    if (atmospheric_fog <= 0.001 || frame.eye_in != 0u || frame.blindness > 0.0 || frame.darkness > 0.0 || dist < 2.0) {
         return colour;
     }
     if (frame.dimension == 1) {
         return colour;
     }
-    let vf = vanilla_fog(P);
+    let vf = select(0.0, clamp(vanilla_fog(P), 0.0, 1.0), surface);
     let edge_guard = 1.0 - smoothstep(0.15, 0.85, vf);
-    if (edge_guard <= 0.001) {
-        return colour;
-    }
-
     let ray_dir = P / max(dist, 1e-3);
     let drift_xz = zn_water_mist_drift(frame.time) * 0.45;
 
     if (frame.dimension == -1) {
+        if (edge_guard <= 0.001) {
+            return colour;
+        }
         var n_t = array<f32, 2>(28.0, 64.0);
         var n_w = array<f32, 2>(smoothstep(16.0, 38.0, dist), smoothstep(38.0, 80.0, dist));
         var ash_sum = 0.0;
@@ -233,83 +235,54 @@ fn zp_atmospheric_fog(P: vec3<f32>, dist: f32, colour: vec3<f32>, climate: vec3<
     if (outdoor_w <= 0.001) {
         return colour;
     }
+    // Aerial perspective through the shared medium (shared/fog.wgsl): the surface is dimmed by the closed-form
+    // transmittance and the medium adds the sky light it scatters (the sun's share, shadowed, is volumetric.wgsl's).
+    // The material stage faded the far terrain into the render-distance fog colour (zn_fog_surface). Swap that colour
+    // for the aerial perspective's, in the same gamma blend, so the edge of the loaded terrain melts into the haze.
+    let ambient = zp_atmo_ambient(ray_dir, climate);
+    if vf > 0.001 && zn_overworld_air_fog() {
+        let swapped = pow(max(colour, vec3<f32>(0.0)), vec3<f32>(1.0 / 2.2))
+            + vf * (pow(ambient, vec3<f32>(1.0 / 2.2)) - pow(zn_overworld_fog_rgb(), vec3<f32>(1.0 / 2.2)));
+        colour = pow(max(swapped, vec3<f32>(0.0)), vec3<f32>(2.2));
+    }
+    let medium = zn_atmo_medium(atmospheric_fog);
+    let transmittance = exp(-zn_atmo_optical_depth(frame.camera_position.y, ray_dir.y, dist, medium));
+    let fogged = colour * transmittance + ambient * (vec3<f32>(1.0) - transmittance);
+    return mix(colour_in, fogged, outdoor_w);
+}
 
+// Haze over a sky pixel: the Mie media only, the sky stage having its own Rayleigh air.
+fn zp_sky_haze(direction: vec3<f32>, colour: vec3<f32>, climate: vec3<f32>) -> vec3<f32> {
+    if atmospheric_fog <= 0.001 || frame.eye_in != 0u || frame.blindness > 0.0 || frame.darkness > 0.0 {
+        return colour;
+    }
+    let outdoor_w = smoothstep(0.12, 0.65, frame.eye_light_smooth.y);
+    if outdoor_w <= 0.001 {
+        return colour;
+    }
+    let medium = zn_atmo_medium(atmospheric_fog);
+    let distance = zn_atmo_sky_distance(direction);
+    let transmittance = exp(-zn_atmo_optical_depth_mie(frame.camera_position.y, direction.y, distance, medium));
+    let fogged = colour * transmittance + zp_atmo_ambient(direction, climate) * (1.0 - transmittance);
+    return mix(colour, fogged, outdoor_w);
+}
+
+// Sky light scattered by the medium toward the camera: the sky just above the horizon in the ray's azimuth
+// (the 64x32 sky-view LUT), so distant terrain fades into the horizon it stands against. Storms and the biome
+// climate tint it as before.
+fn zp_atmo_ambient(ray_dir: vec3<f32>, climate: vec3<f32>) -> vec3<f32> {
     let sun_elev = frame.sun_direction.y;
     let daylight = smoothstep(-0.04, 0.20, sun_elev);
-    let twilight_vis = smoothstep(-0.045, 0.06, sun_elev);
-    let sunset = exp(-pow(max(sun_elev, -0.04) * 6.5, 2.0)) * twilight_vis;
     let storm = clamp(frame.rain * 0.72 + frame.thunder * 0.28, 0.0, 1.0);
-
-    let y_ref = 64.0;
-    let b = 0.045;
-    let h0 = clamp((frame.camera_position.y - y_ref) * b, -1.5, 6.0);
-    let dh = P.y * b;
-    let height_factor = clamp(select(exp(-h0) * (1.0 - exp(-dh)) / dh, exp(-h0), abs(dh) < 1e-3), 0.0, 2.2);
-
-    let climate_density = climate * mix(0.42, 1.0, daylight) * (1.0 - storm * 0.4);
-    let sigma_h = mix(0.0018, 0.0050, storm) * (1.0 + 0.45 * sunset)
-        * (1.0 + dot(climate_density, vec3<f32>(0.34, 1.00, 0.04)));
-    let sigma_a = mix(0.0010, 0.0026, storm) * (1.0 + dot(climate_density, vec3<f32>(0.25, -0.08, -0.25)));
-    let d_eff = max(dist - 20.0, 0.0);
-    let optical = (sigma_h * height_factor + sigma_a) * d_eff * atmospheric_fog;
-    let max_cap = mix(mix(0.14, 0.38 + 0.12 * climate.y, daylight), 0.56, storm);
-    var fog_amount = clamp((1.0 - exp(-optical)) * outdoor_w * edge_guard, 0.0, max_cap);
-
-    let sun_fwd = pow(max(dot(ray_dir, normalize(frame.sun_direction)), 0.0), 3.0) * smoothstep(-0.03, 0.10, sun_elev);
-    let neutral_haze = mix(vec3<f32>(0.22, 0.36, 0.60), max(frame.sky_color, vec3<f32>(0.10, 0.18, 0.34)) * 1.10, 0.45);
-    let day_haze = zp_climate_haze(neutral_haze, climate);
-    let night_haze = vec3<f32>(0.005, 0.009, 0.019);
-    let sunset_haze = vec3<f32>(0.58, 0.28, 0.13) * mix(0.20, 1.0, twilight_vis);
-    let overcast_haze = mix(vec3<f32>(0.009, 0.013, 0.022), vec3<f32>(0.18, 0.22, 0.27), daylight);
-
-    var haze_col = mix(night_haze, day_haze, daylight);
-    haze_col = mix(haze_col, sunset_haze, clamp(sunset * (0.12 + 0.68 * sun_fwd), 0.0, 0.72));
-    haze_col = haze_col + vec3<f32>(0.38, 0.26, 0.14) * sun_fwd * daylight * 0.26;
-    haze_col = mix(haze_col, overcast_haze, storm * 0.78);
-
-    if frame.dimension == 0 {
-        let lut_uv = zn_sky_lut_uv(vec3<f32>(ray_dir.x, clamp(ray_dir.y, 0.0, 1.0), ray_dir.z));
-        let lut_sky = textureSampleLevel(zp_climate, linear_sampler, lut_uv, 0.0);
-        if lut_sky.a > 0.5 {
-            let lut_haze = zp_climate_haze(lut_sky.rgb * mix(0.68, 1.05, max(daylight, twilight_vis)), climate);
-            haze_col = mix(haze_col, lut_haze, mix(0.32, 0.68, max(daylight, sunset)));
-        }
+    var ambient = mix(vec3<f32>(0.005, 0.009, 0.019), max(frame.sky_color, vec3<f32>(0.10, 0.18, 0.34)), daylight);
+    let horizon_dir = vec3<f32>(ray_dir.x, clamp(ray_dir.y, ZP_ATMO_HORIZON.x, ZP_ATMO_HORIZON.y), ray_dir.z);
+    let lut = textureSampleLevel(zp_climate, linear_sampler, zn_sky_lut_uv(horizon_dir), 0.0);
+    if lut.a > 0.5 {
+        ambient = lut.rgb;
     }
-
-    if fog_amount > 0.008 && dist > 20.0 {
-        var band_t = array<f32, 3>(30.0, 60.0, 96.0);
-        var band_w = array<f32, 3>(
-            smoothstep(18.0, 36.0, dist),
-            smoothstep(34.0, 68.0, dist),
-            smoothstep(64.0, 108.0, dist),
-        );
-        var wisp_sum = 0.0;
-        var valley_sum = 0.0;
-        var weight_sum = 0.0;
-        for (var s = 0; s < 3; s = s + 1) {
-            let bw = band_w[s];
-            if bw <= 0.001 { continue; }
-            let wp = ray_dir * band_t[s] + frame.camera_position;
-            let valley = smoothstep(104.0, 56.0, wp.y);
-            let q = vec3<f32>(wp.x * 0.024 + drift_xz.x, wp.y * 0.062 - frame.time * 0.014, wp.z * 0.024 + drift_xz.y);
-            let warp = zp_vnoise3(q * 0.85);
-            let swirl = zp_fbm3(q + vec3<f32>(warp - 0.5, (warp - 0.5) * 0.35, 0.5 - warp) * 1.25);
-            wisp_sum = wisp_sum + swirl * valley * bw;
-            valley_sum = valley_sum + valley * bw;
-            weight_sum = weight_sum + bw;
-        }
-        if valley_sum > 0.01 {
-            let valley_w = valley_sum / max(weight_sum, 1e-4);
-            let wisp_avg = smoothstep(0.24, 0.78, wisp_sum / max(valley_sum, 1e-4));
-            let wisp_amp = valley_w * clamp(weight_sum, 0.0, 1.0)
-                * clamp(0.42 + 0.35 * storm + 0.35 * sunset + 0.35 * climate.y, 0.38, 1.0);
-            fog_amount = clamp(fog_amount * mix(1.0, mix(0.76, 1.28, wisp_avg), wisp_amp), 0.0, max_cap);
-            let sunlit_wisp = haze_col * 1.14 + vec3<f32>(0.10, 0.07, 0.04) * sun_fwd * daylight;
-            haze_col = mix(haze_col, mix(haze_col * 0.86, sunlit_wisp, wisp_avg), wisp_amp * 0.82);
-        }
-    }
-
-    return mix(colour, haze_col, fog_amount);
+    ambient = mix(ambient, zp_climate_haze(ambient, climate), 0.45);
+    let overcast = mix(vec3<f32>(0.009, 0.013, 0.022), vec3<f32>(0.18, 0.22, 0.27), daylight);
+    return mix(ambient * ZP_ATMO_AMBIENT_GAIN, overcast, storm * 0.75);
 }
 
 fn zp_ao_filtered(uv: vec2<f32>, dist: f32) -> f32 {
@@ -495,6 +468,15 @@ fn post(input: PostInput) -> vec4<f32> {
                 let fg_excess = max(colour - vec3<f32>(0.025, 0.016, 0.032), vec3<f32>(0.0));
                 colour = mix(colour, end_sky + fg_excess, vis);
             }
+        } else if frame.dimension == 0 {
+            // The haze lies in front of the sky too: thick toward the horizon (and over the void below it), thin
+            // overhead, so the sky's horizon, the void and the distant terrain meet in one colour.
+            let direction = zp_sky_ray(input.uv);
+            colour = zp_sky_haze(direction, colour, climate);
+            if dot(climate, climate) > 0.001 && air_light > 0.001 {
+                let horizon = 1.0 - smoothstep(0.025, 0.32, abs(direction.y));
+                colour = zp_climate_irradiance(colour, climate, air_light * horizon);
+            }
         } else if frame.dimension == 0 && dot(climate, climate) > 0.001 && air_light > 0.001 {
             let direction = zp_sky_ray(input.uv);
             let horizon = 1.0 - smoothstep(0.025, 0.32, abs(direction.y));
@@ -533,7 +515,7 @@ fn post(input: PostInput) -> vec4<f32> {
         if dot(climate, climate) > 0.001 && air_light > 0.001 {
             colour = zp_climate_irradiance(colour, climate, air_light);
         }
-        colour = zp_atmospheric_fog(P, dist, colour, climate);
+        colour = zp_atmospheric_fog(P, dist, colour, climate, true);
     }
 
     if (volumetric_light > 0.0) {
