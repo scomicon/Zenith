@@ -98,7 +98,7 @@ fn zp_beacon_source(cell: vec2<i32>, size: vec2<i32>) -> vec4<f32> {
 
 fn compute(input: ComputeInput) {
     if lens_flare <= 0.0 || frame.eye_in != 0u || frame.blindness >= 0.99 || frame.darkness >= 0.99 {
-        if input.local < 3u { textureStore(zp_optics_sources, vec2<i32>(i32(input.local), 0), vec4<f32>(0.0)); }
+        if input.local < 3u { zp_shared[1u + input.local] = vec4<f32>(0.0); }
         return;
     }
     let size = vec2<i32>(frame.resolution);
@@ -114,8 +114,8 @@ fn compute(input: ComputeInput) {
         for (var index = 1u; index < 64u; index++) {
             if zp_beacon_candidates[index].z > winner.z { winner = zp_beacon_candidates[index]; }
         }
-        textureStore(zp_optics_sources, vec2<i32>(0, 0), zp_sun_source());
-        textureStore(zp_optics_sources, vec2<i32>(1, 0), zp_portal_source());
-        textureStore(zp_optics_sources, vec2<i32>(2, 0), winner);
+        zp_shared[1] = zp_sun_source();
+        zp_shared[2] = zp_portal_source();
+        zp_shared[3] = winner;
     }
 }

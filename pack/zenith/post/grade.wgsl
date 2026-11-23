@@ -146,7 +146,7 @@ fn post(input: PostInput) -> vec4<f32> {
     let lum = dot(colour, frame.luminance);
     colour = max(mix(vec3<f32>(lum), colour, saturation), vec3<f32>(0.0));
     if auto_exposure && histogram_exposure && frame.dimension != 1 {
-        let exposure = textureLoad(zp_exposure, vec2<i32>(0), 0);
+        let exposure = zp_shared[0];
         let vision = 1.0 - clamp(max(frame.night_vision, max(frame.blindness, frame.darkness)), 0.0, 1.0);
         let medium = select(0.0, select(0.18, 1.0, frame.eye_in == 0u), frame.eye_in <= 1u);
         let adapted_ev = select(clamp(exposure.r, -1.75, 1.15), clamp(exposure.r, -1.75, 0.20), frame.eye_in == 1u);

@@ -52,11 +52,11 @@ fn compute(input: ComputeInput) {
     if input.local == 0u {
         let target_ev = zp_indoor_ev(zp_meter_ev(), frame.eye_light_smooth.y, frame.eye_light_smooth.x,
             frame.dimension == 0 && frame.eye_in == 0u && frame.night_vision <= 0.001);
-        let prior = textureLoad(zp_exposure_previous, vec2<i32>(0), 0);
+        let prior = zp_shared[0]; // Last frame's: this pass writes it below.
         var ev = target_ev;
         if prior.g > 0.5 && frame.delta_time > 0.0 && length(frame.camera_motion) < 8.0 {
             ev = zp_adapt_ev(prior.r, target_ev, frame.delta_time);
         }
-        textureStore(zp_exposure, vec2<i32>(0), vec4<f32>(ev, 1.0, 0.0, 0.0));
+        zp_shared[0] = vec4<f32>(ev, 1.0, 0.0, 0.0);
     }
 }

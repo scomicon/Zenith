@@ -126,7 +126,7 @@ fn zp_lens_flare(uv: vec2<f32>) -> vec3<f32> {
     let aspect = frame.resolution.x / max(frame.resolution.y, 1.0);
     var total = vec3<f32>(0.0);
     for (var source_id = 0u; source_id < 3u; source_id++) {
-        let source = textureLoad(zp_optics_sources, vec2<i32>(i32(source_id), 0), 0);
+        let source = zp_shared[1u + source_id];
         if source.z <= 0.001 { continue; }
         let edge = min(min(source.x, source.y), 1.0 - max(source.x, source.y));
         let tint = select(select(vec3<f32>(1.0, 0.84, 0.61), vec3<f32>(0.62, 0.40, 1.0), source_id == 1u),

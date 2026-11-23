@@ -105,15 +105,15 @@ portal when `frame.dimension == 1` before `bloom_down_a`.
 | 4 | `ssr.wgsl` | `zp_reflection`: signed RGB contribution and history depth | `previous`, depth, surface, `zp_reflection_previous` |
 | 5 | `end_rift.wgsl` | chain | `previous`, `zp_reflection`, depth |
 | 6 | `compute/exposure_histogram.wgsl` | `zp_luma_tiles` | `previous` |
-| 7 | `compute/exposure_resolve.wgsl` | `zp_exposure` | `zp_luma_tiles`, `zp_exposure_previous` |
+| 7 | `compute/exposure_resolve.wgsl` | `zp_shared[0]` (exposure) | `zp_luma_tiles`, last frame's `zp_shared[0]` |
 | 8 | `bloom_down_a.wgsl` | `bloom_a` (1/2) | `scene_color` (`previous` in The End) |
 | 9 | `bloom_down_b.wgsl` | `bloom_b` (1/4) | `bloom_a` |
 | 10 | `bloom_wide.wgsl` | `bloom_wide` (1/4) | `bloom_b` |
 | 11 | `smaa_edges.wgsl` | `zp_edges` | `previous` |
 | 12 | `smaa_weights.wgsl` | `zp_edge_weights` | `zp_edges` |
 | 13 | `fxaa.wgsl` | chain | `previous`, `zp_edge_weights` in morphological mode |
-| 14 | `compute/optics_sources.wgsl` | `zp_optics_sources` (3×1) | anti-aliased scene, depth, and surface metadata |
-| 15 | `grade.wgsl` | window | `previous`, depth and surface, bloom pyramid, `zp_exposure`, optical sources |
+| 14 | `compute/optics_sources.wgsl` | `zp_shared[1..3]` (flare sources) | anti-aliased scene, depth, and surface metadata |
+| 15 | `grade.wgsl` | window | `previous`, depth and surface, bloom pyramid, `zp_shared` (exposure, optical sources) |
 
 The bloom chain is a pyramid: `bloom_a` (1/2) and `bloom_b` (1/4) are 13-tap downsamples, `bloom_wide` is a 3x3
 binomial tent with its taps spread 3 texels over `bloom_b`, and `grade.wgsl` mixes the three levels into the picture
@@ -156,4 +156,4 @@ horizon-shader check outputs/zenith-rt/zenith_rt
 
 Hi-Z depth (`post/hiz.wgsl`, a compute pass) is built whenever `ssr_enabled` is on. It has no option of its own because a pack may declare only 64 options.
 
-The three-tap sun march through the volumetric clouds (`sky/sky.wgsl`) is always on; it has no option because a pack may declare only 64 options and Zenith RT adds one.
+The volumetric clouds (`sky/clouds.wgsl`) are marched once a frame by a `[[before_world]]` compute pass (`compute/cloud_bake.wgsl`) into `zp_clouds`, a half-resolution map of the view with an 8% margin, and the sky stage reads it with a bilinear lookup by direction. The map is indexed through the frame's own projection and view, so a sky pixel always finds the texel baked for its own ray, view bob included. With no sky light at the eye (caves) the bake is skipped, and a sky pixel seen from there marches its own ray as before. The two-tap sun march through the clouds is always on; it reads only the two coarse octaves of the cloud map. Exposure and the three lens-flare sources share one 64-byte buffer, `zp_shared`, which frees the resource slot the cloud map needs (a pack may declare 8).
