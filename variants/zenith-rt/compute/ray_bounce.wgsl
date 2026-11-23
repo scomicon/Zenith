@@ -83,26 +83,55 @@ fn zp_rt_hit_lit(hit: RayHit) -> vec3<f32> {
     return albedo * (ambient + direct + local) + albedo * (zn_rt_hit_emission(hit) * 1.5);
 }
 
-fn zp_rt_gi(p: vec3<f32>, n: vec3<f32>, texel: vec2<i32>) -> vec3<f32> {
-    if frame.dimension != 0 { return vec3<f32>(0.0); }
+// Sky visibility by rays (both RT lighting modes that trace shadows): the raster pass lights a surface with a
+// hemisphere ambient as if the whole sky above it were open, scaled only by its vertex sky light. Cosine-distributed
+// rays find the share of the hemisphere the sky really fills (under a canopy, an overhang, in a corner or a room);
+// material/ray_sky.wgsl scales the ambient and the sky reflection by it, never the sun. In Full RT the GI rays add the
+// light of the lit surfaces they meet (colour bleeding, emissive blocks).
+const ZP_SKY_RAYS: u32 = 4u;
+const ZP_SKY_RANGE: f32 = 40.0;
+const ZP_SKY_FILL: f32 = 0.22;   // visibility kept where every ray is blocked: light bounced from beyond the rays
+
+fn zp_rt_sky_rays() -> u32 {
+    return select(ZP_SKY_RAYS, ZP_SKY_RAYS * 2u, quality_mode >= 3u);
+}
+
+struct ZpRtDiffuse {
+    bounce: vec3<f32>,
+    sky: f32,
+}
+
+fn zp_rt_gi(p: vec3<f32>, n: vec3<f32>, texel: vec2<i32>, bounce_on: bool) -> ZpRtDiffuse {
+    var out: ZpRtDiffuse;
+    out.bounce = vec3<f32>(0.0);
+    out.sky = 1.0;
+    if frame.dimension != 0 { return out; }
     let origin = p + n * 0.05;
-    var bounce = vec3<f32>(0.0);
     var escaped = 0.0;
-    let rays = zp_rt_gi_rays();
-    for (var i = 0u; i < rays; i++) {
-        let dir = zp_rt_cosine_direction(n, zp_rt_rand2(texel, i));
-        let reach = zn_rt_reach(origin, dir, ZP_GI_RANGE);
-        if reach <= 0.4 { escaped += 1.0; continue; }
-        let hit = trace(origin, dir, reach);
-        if hit.distance < 0.0 { escaped += 1.0; continue; }
-        // Falloff with the path length, so a far wall does not light a surface like a near one.
-        bounce += min(zp_rt_hit_lit(hit) / (1.0 + 0.012 * hit.distance * hit.distance), vec3<f32>(3.0));
+    let sky_rays = zp_rt_sky_rays();
+    for (var i = 0u; i < sky_rays; i++) {
+        let dir = zp_rt_cosine_direction(n, zp_rt_rand2(texel, 16u + i));
+        // A ray below the horizon stands for the ground's bounced light, which the raster ambient already holds.
+        if dir.y < 0.05 { escaped += 1.0; continue; }
+        let reach = zn_rt_reach(origin, dir, ZP_SKY_RANGE);
+        if reach <= 0.4 || !trace_any(origin, dir, reach) { escaped += 1.0; }
     }
-    let count = f32(rays);
-    let sky_share = escaped / count;
-    // The raster ambient assumed an open hemisphere (scaled by the vertex sky light); the traced share replaces it.
-    let shortfall = zp_rt_ambient(n) * (sky_share - pow(sky_share, 1.35));
-    return (bounce / count + shortfall) * gi_strength;
+    out.sky = mix(ZP_SKY_FILL, 1.0, escaped / f32(sky_rays));
+    if bounce_on {
+        var bounce = vec3<f32>(0.0);
+        let rays = zp_rt_gi_rays();
+        for (var i = 0u; i < rays; i++) {
+            let dir = zp_rt_cosine_direction(n, zp_rt_rand2(texel, i));
+            let reach = zn_rt_reach(origin, dir, ZP_GI_RANGE);
+            if reach <= 0.4 { continue; }
+            let hit = trace(origin, dir, reach);
+            if hit.distance < 0.0 { continue; }
+            // Falloff with the path length, so a far wall does not light a surface like a near one.
+            bounce += min(zp_rt_hit_lit(hit) / (1.0 + 0.012 * hit.distance * hit.distance), vec3<f32>(3.0));
+        }
+        out.bounce = bounce / f32(rays) * gi_strength;
+    }
+    return out;
 }
 
 struct ZpRtWindowProbe {
@@ -272,20 +301,23 @@ fn compute(input: ComputeInput) {
     let has_rt = frame.has_ray_tracing != 0u && frame.eye_in == 0u;
     let diffuse_size = input.size.xy - vec2<u32>(0u, 1u);
     let rows = i32(diffuse_size.y);
+    // Bands of zp_rt_bounce, each `rows` high: diffuse bounce, stained-glass light, sky visibility; then the probe row.
+    let probe_row = 3 * rows;
     let windows = has_rt && rt_lighting >= 1u && frame.dimension == 0;
     if input.cell.y == diffuse_size.y {
         if input.cell.x < ZP_RT_DISCOVERY_STRIPES {
             var probe: ZpRtWindowProbe;
             if windows { probe = zp_rt_probe_window(input.cell.x); }
-            zp_rt_store_window(pixel + vec2<i32>(ZP_RT_DISCOVERY_BASE, rows), probe);
+            zp_rt_store_window(vec2<i32>(pixel.x + ZP_RT_DISCOVERY_BASE, probe_row), probe);
         } else if input.cell.x == ZP_RT_DISCOVERY_STRIPES {
-            zp_rt_update_windows(2 * rows, windows);
+            zp_rt_update_windows(probe_row, windows);
         }
         return;
     }
     let uv = (vec2<f32>(pixel) + 0.5) / vec2<f32>(diffuse_size);
     var result = vec4<f32>(0.0);
-    if rt_lighting == 2u && has_rt {
+    var sky = vec4<f32>(0.0);
+    if rt_lighting >= 1u && has_rt {
         let depth = depth_at(uv);
         let surface = surface_at(vec2<i32>(uv * frame.resolution));
         if depth > 0.0 && surface.present && surface.data < 0.5 {
@@ -293,28 +325,37 @@ fn compute(input: ComputeInput) {
             let distance = length(p);
             let fade = 1.0 - smoothstep(30.0, 56.0, distance);
             if fade > 0.0 && max(abs(p.x), abs(p.z)) + 12.0 < frame.ray_distance {
-                var light = zp_rt_gi(p, normalize(surface.normal), pixel) * fade;
+                let traced = zp_rt_gi(p, normalize(surface.normal), pixel, rt_lighting == 2u);
+                var light = traced.bounce * fade;
+                var visibility = mix(1.0, traced.sky, fade);
                 let prev_uv = zp_previous_uv(p);
                 if all(prev_uv >= vec2<f32>(0.0)) && all(prev_uv < vec2<f32>(1.0)) {
                     let dims = vec2<i32>(diffuse_size);
-                    let prior = textureLoad(zp_rt_bounce_previous, min(vec2<i32>(prev_uv * vec2<f32>(dims)), dims - 1), 0);
+                    let tap = min(vec2<i32>(prev_uv * vec2<f32>(dims)), dims - 1);
                     let motion = length(frame.camera_motion);
                     let keep = mix(0.95, 0.80, smoothstep(0.0, 0.08, motion));
+                    let expected = length(p + frame.camera_motion);
+                    let prior = textureLoad(zp_rt_bounce_previous, tap, 0);
                     if prior.a > 0.0 {
-                        let expected = length(p + frame.camera_motion);
                         let valid = 1.0 - smoothstep(0.05, 0.12 + expected * 0.008, abs(prior.a - expected));
                         light = mix(light, clamp(prior.rgb, light - vec3<f32>(0.8), light + vec3<f32>(0.8)), keep * valid);
                     }
+                    let prior_sky = textureLoad(zp_rt_bounce_previous, tap + vec2<i32>(0, 2 * rows), 0);
+                    if prior_sky.a > 0.0 {
+                        let valid = 1.0 - smoothstep(0.05, 0.12 + expected * 0.008, abs(prior_sky.a - expected));
+                        visibility = mix(visibility, prior_sky.r, keep * valid);
+                    }
                 }
                 result = vec4<f32>(clamp(light, vec3<f32>(-1.5), vec3<f32>(3.0)), distance);
+                sky = vec4<f32>(clamp(visibility, 0.0, 1.0), 0.0, 0.0, distance);
             }
         }
     }
     textureStore(zp_rt_bounce, pixel, result);
+    textureStore(zp_rt_bounce, pixel + vec2<i32>(0, 2 * rows), sky);
     var direct = vec4<f32>(0.0);
     if windows && zn_rt_window_history_valid() {
-        direct = zp_rt_window_surface(uv, 2 * rows);
+        direct = zp_rt_window_surface(uv, probe_row);
     }
     textureStore(zp_rt_bounce, pixel + vec2<i32>(0, rows), direct);
 }
-

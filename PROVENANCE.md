@@ -336,3 +336,9 @@ Status: `ok` written from the sources, `rewritten` rewritten from sources, `pend
 | File | Algorithm / change | Sources | Own choices |
 |---|---|---|---|
 | `tools/build-zenith-rt.mjs` | Zenith RT no longer shrinks `vlight` to 480x270: the sun shafts and haze use the raster pack's 960x540, as the depth-aware upsampling needs on foliage and thin edges | | Measured on an RX 7600 at 1080p: Volumetric light pass 0.53 -> 1.81 ms, frame +2.5 ms in a sunset forest view |
+
+### Zenith RT: traced sky visibility (ambient occlusion and sky light)
+
+| File | Algorithm / change | Sources | Own choices |
+|---|---|---|---|
+| `variants/zenith-rt/compute/ray_bounce.wgsl`, `variants/zenith-rt/material/ray_sky.wgsl`, `variants/zenith-rt/post/ray_bounce_filter.wgsl`, `tools/build-zenith-rt.mjs` | Cosine-distributed visibility rays to the sky, accumulated over frames into a third band of `zp_rt_bounce` (480x811); the material pass reads last frame's band at the point's previous screen position (depth-checked bilinear) and scales the hemisphere ambient and the environment reflection by it | M. Landis, SIGGRAPH 2002 course (ambient occlusion as visible sky); Kajiya 1986; Tomasi and Manduchi 1998 | 4 rays (8 in Ultra), range 40 blocks, rays below 0.05 elevation counted open (the ambient's ground half), fill 0.22, fade 30-56 blocks; GTAO strength halved within 30 blocks in RT; the former Full RT sky term (which only ever added light) is removed, Full RT keeps the diffuse bounce |

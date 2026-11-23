@@ -34,11 +34,12 @@ replaceOnce(manifest, 'description = "Physically-minded shader pack: shadows, GT
 replaceOnce(manifest, '    "material/water.wgsl",', `    "material/water.wgsl",
     "shared/ray_lighting.wgsl",
     "material/ray_terrain.wgsl",
-    "material/ray_lights.wgsl",`);
+    "material/ray_lights.wgsl",
+    "material/ray_sky.wgsl",`);
 replaceOnce(manifest, '[[post]]\nfile = "post/gtao.wgsl"', `[[resource]]
 name = "zp_rt_bounce"
 format = "rgba16float"
-size = [480, 541]
+size = [480, 811]
 keep = "view"
 
 [[post]]
@@ -169,6 +170,10 @@ replaceOnce(reflection, ssr.slice(start, end), `    let hit_col = zp_ssr_sample_
     if traced.a > 0.001 { return zp_rt_out(P, reflection_delta, traced.a); }
 `);
 
+// With traced sky light (compute/ray_bounce.wgsl) the screen-space AO keeps only its fine contact detail.
+replaceOnce('post/compose.wgsl', '            let k = ao_strength * water_ao / (1.0 + 0.35 * zn_luma(colour));',
+  `            let rt_sky = select(1.0, mix(0.5, 1.0, smoothstep(30.0, 56.0, dist)), rt_lighting >= 1u && frame.has_ray_tracing != 0u && frame.eye_in == 0u);
+            let k = ao_strength * water_ao * rt_sky / (1.0 + 0.35 * zn_luma(colour));`);
 replaceOnce('post/compose.wgsl', '    if (input.depth > 0.0 && (ao_strength > 0.0 || contact_shadows || atmospheric_fog > 0.001)) {',
   '    if input.depth > 0.0 {');
 replaceOnce('post/compose.wgsl', '        colour = zp_atmospheric_fog(P, dist, colour, climate, true);',
@@ -188,6 +193,13 @@ replaceOnce(material, '                if refr.valid {\n                    var 
                     var refr_col = mix(refr.color, rt_behind.rgb, rt_behind.a);`);
 // Traced block lights (material/ray_lights.wgsl) take over vanilla's block light where the light grid reaches.
 const lighting = 'material/lighting.wgsl';
+// Traced sky visibility (material/ray_sky.wgsl) scales the hemisphere ambient and the sky reflection.
+replaceOnce(manifest, 'reads = ["zp_climate"]\nfiles = [', 'reads = ["zp_climate", "zp_rt_bounce_previous"]\nfiles = [');
+replaceOnce(lighting, '    let diff_amb = surf.albedo * (1.0 - surf.metallic * 0.75) * ambient * surf.ao;',
+  `    let rt_sky = mat_rt_sky_visibility(input.position);
+    let diff_amb = surf.albedo * (1.0 - surf.metallic * 0.75) * ambient * surf.ao * rt_sky;`);
+replaceOnce(lighting, '    color = color + mat_eval_environment_specular(surf.normal, V, surf, input.light.y) * surf.ao;',
+  '    color = color + mat_eval_environment_specular(surf.normal, V, surf, input.light.y) * surf.ao * rt_sky;');
 replaceOnce(lighting, '    let bl_rad = block_tint * bl_curve * flicker;', `    let rt_block = mat_rt_block_light(input.position, geom_n, surf.normal, V, surf, input.light.x);
     let bl_rad = block_tint * bl_curve * flicker * rt_block.vanilla_scale;`);
 replaceOnce(lighting, '    color += diffuse_light * (bl_rad * block_wrap + dyn_light * 0.85);', `    color += diffuse_light * (bl_rad * block_wrap + dyn_light * 0.85);
@@ -217,7 +229,7 @@ for (const file of [shadows, 'material/water.wgsl', reflection, 'post/compose.wg
 
 files.set('README.md', read(variant, 'README.md') + '\n---\n\n' + read(source, 'README.md'));
 const overlays = [
-  'shared/ray_lighting.wgsl', 'material/ray_terrain.wgsl', 'material/ray_lights.wgsl', 'post/ray_reflection.wgsl',
+  'shared/ray_lighting.wgsl', 'material/ray_terrain.wgsl', 'material/ray_lights.wgsl', 'material/ray_sky.wgsl', 'post/ray_reflection.wgsl',
   'compute/ray_bounce.wgsl', 'compute/ray_window_surface.wgsl', 'post/ray_bounce_filter.wgsl', 'post/ray_window_light.wgsl',
 ];
 for (const file of overlays) files.set(file, read(variant, file));

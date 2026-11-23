@@ -7,7 +7,7 @@ fn zp_rt_bounce_filtered(uv: vec2<f32>, distance: f32) -> vec3<f32> {
         return vec3<f32>(0.0);
     }
     let size = vec2<i32>(textureDimensions(zp_rt_bounce));
-    let dims = vec2<i32>(size.x, (size.y - 1) / 2);
+    let dims = vec2<i32>(size.x, (size.y - 1) / 3);
     return zp_rt_upsample_light(uv, distance, dims, 0);
 }
 
@@ -17,7 +17,7 @@ fn zp_rt_glass_filtered(uv: vec2<f32>, distance: f32) -> vec3<f32> {
     }
     let row = i32(textureDimensions(zp_rt_bounce).y) - 1;
     if textureLoad(zp_rt_bounce, vec2<i32>(0, row), 0).w < 0.5 { return vec3<f32>(0.0); }
-    let dims = vec2<i32>(i32(textureDimensions(zp_rt_bounce).x), row / 2);
+    let dims = vec2<i32>(i32(textureDimensions(zp_rt_bounce).x), row / 3);
     let visible = 1.0 - clamp(max(frame.blindness, frame.darkness), 0.0, 1.0);
     return zp_rt_upsample_light(uv, distance, dims, dims.y) * visible;
 }
