@@ -128,6 +128,12 @@ Status: `ok` written from the sources, `rewritten` rewritten from sources, `pend
 
 ## Additional features & stages
 
+### Zenith Engine shadows — 2026-11-24
+
+| File | Algorithm / change | Sources | Own choices | Status |
+|---|---|---|---|---|
+| `horizon-shaders.toml`, `material/common_local.wgsl`, `material/shadows.wgsl`, `material/lighting.wgsl`, `material/water.wgsl`, `entity/entity.wgsl`, `post/compose.wgsl` | `engine_shadows` option: within 120 blocks the sun visibility of sunward, sky-lit surfaces is replaced by the cloud shadow alone (`mat_engine_shadows`), so the Zenith Engine mod's voxel-traced shadows, multiplied into the picture after the pack, are not applied twice; contact shadows off with it | Horizon Shader API 0.2 (overrides, `frame.dimension`); the pack's own `mat_cloud_shadow_vis` | Range 96..120 blocks matching the mod's fade; N·L > 0.02 and sky light > 0 matching what the mod shadows; the mod's default shadow factor 0.45 measured from the pack's own shadowed/lit luminance ratio (0.44 on sand, RT Ultra, 08:00) | ok |
+
 ### Final Horizon Shader API 0.2 adaptation & visual bugfixes — 2026-11-21
 
 | File | Algorithm / change | Sources | Own choices | Status |

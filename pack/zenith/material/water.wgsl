@@ -295,7 +295,7 @@ fn mat_shade_water(input: MaterialInput) -> Surface {
 
     // 2. Shadows & Lighting environment
     let shadow_n = select(geom_n, -geom_n, is_underside);
-    let shadow = mat_sample_shadows(input.position, shadow_n, L, input.light.y, input.screen, true);
+    let shadow = mat_engine_shadows(mat_sample_shadows(input.position, shadow_n, L, input.light.y, input.screen, true), input.position, shadow_n, L, input.light.y);
     let sun_rad = mat_sun_moon_radiance();
     let sky_amb = mat_sky_ambient_color(N, input.light.y);
 

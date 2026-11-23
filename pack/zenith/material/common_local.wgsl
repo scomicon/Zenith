@@ -6,6 +6,8 @@
 
 // --- Material & Shadow Pipeline Overrides (matching manifest-fragments/material.toml) ---
 override shadows_enabled: bool = true;
+// The Zenith Engine mod casts the sun's shadows near the camera (mat_engine_shadows).
+override engine_shadows: bool = false;
 override shadow_filter_quality: u32 = 1u;
 override shadow_softness: f32 = 1.35;
 override colored_shadows: bool = true;

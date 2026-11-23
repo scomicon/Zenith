@@ -23,6 +23,8 @@
 override ao_strength: f32 = 1.0;
 override volumetric_light: f32 = 0.6;
 override contact_shadows: bool = true;
+// The Zenith Engine mod casts the sun's shadows near the camera: no contact shadows on top of them.
+override engine_shadows: bool = false;
 override quality_mode: u32 = 1u;
 override atmospheric_fog: f32 = 1.0;
 
@@ -50,7 +52,7 @@ fn zp_estimate_albedo(colour: vec3<f32>) -> vec3<f32> {
 }
 
 fn zp_contact_shadow(input: PostInput, P: vec3<f32>, dist: f32, colour: vec3<f32>) -> f32 {
-    if (!contact_shadows || frame.dimension != 0 || frame.has_shadow == 0u || frame.eye_in != 0u) {
+    if (!contact_shadows || engine_shadows || frame.dimension != 0 || frame.has_shadow == 0u || frame.eye_in != 0u) {
         return 0.0;
     }
     let dist_fade = smoothstep(0.25, 0.65, dist) * (1.0 - smoothstep(26.0, 44.0, dist));

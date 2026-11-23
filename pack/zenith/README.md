@@ -154,6 +154,9 @@ horizon-shader check outputs/zenith-rt/zenith_rt
 |---|---|---|
 | `ssr_glossy` | bool | `post/ssr.wgsl` (roughness cone and contact-hardening blur) |
 | `body_sss` | bool | `material/lighting.wgsl` (skin, wax, snow, ice and other LabPBR subsurface materials; also gates the screen-space diffusion in `post/sss_screen.wgsl`) |
+| `engine_shadows` | bool | `material/shadows.wgsl` (`mat_engine_shadows`, used by `material/lighting.wgsl` and `material/water.wgsl`), `entity/entity.wgsl`, `post/compose.wgsl` (turns contact shadows off) |
+
+**Zenith Engine Shadows** (`engine_shadows`, off by default) hands the sun's shadows near the camera to the [Zenith Engine](https://github.com/scomicon/zenith-engine) mod, a native Horizon mod that traces them through its own voxel copy of the world and multiplies them into the picture. Within 96 blocks of the camera the pack lights sunward surfaces as unshadowed (only cloud shadows stay), from 96 to 120 blocks its own shadows fade back in, and contact shadows are off. Surfaces facing away from the sun and those with no sky light keep the pack's shading, since the mod skips both. The mod reads this option from the pack's saved values and turns its shadows on with it; without the mod, nearby terrain has no sun shadows. Zenith RT gets the same option: its traced shadows give way to the mod's in the same range.
 
 Hi-Z depth (`post/hiz.wgsl`, a compute pass) is built whenever `ssr_enabled` is on. Each 8x8 workgroup reduces its 10x10 depth tiles once into workgroup memory and takes each cell's 3x3 from there (about 0.24 ms at 1080p on an RX 7600, was 1.2 ms). It has no option of its own because a pack may declare only 64 options.
 

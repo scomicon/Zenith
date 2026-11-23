@@ -397,14 +397,14 @@ fn mat_shade_opaque_or_cutout(
     let is_plant = (input.tags & TAG_PLANTS) != 0u || input.material == MAT_ID_PLANTS || input.material == MAT_ID_VINES_KELP;
     let shadow_pos = select(input.position, input.position + L * 0.28 + vec3<f32>(0.0, 0.14, 0.0), is_plant);
     let shadow_norm = select(geom_n, L, is_plant);
-    let shadow = mat_sample_shadows(
+    let shadow = mat_engine_shadows(mat_sample_shadows(
         shadow_pos,
         shadow_norm,
         L,
         input.light.y,
         input.screen,
         input.translucent || is_plant,
-    );
+    ), input.position, geom_n, L, input.light.y);
     let sun_rad = mat_sun_moon_radiance();
     var color = mat_eval_brdf_direct(surf.normal, V, L, surf, sun_rad) * (shadow.sun_visibility * surf.relief_shadow);
     if foliage_sss && surf.subsurface > 0.01 && zn_luma(sun_rad) > 1e-4 {

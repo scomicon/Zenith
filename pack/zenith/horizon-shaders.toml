@@ -996,6 +996,13 @@ type = "bool"
 default = true
 
 [[options]]
+id = "engine_shadows"
+name = "Zenith Engine Shadows"
+description = "Needs the Zenith Engine mod. The mod casts sun shadows within about 100 blocks by tracing its own voxel copy of the world, and the pack stops shadowing that range so nothing is darkened twice. Farther away the pack's shadows return. Without the mod, nearby terrain gets no sun shadows."
+type = "bool"
+default = false
+
+[[options]]
 id = "shadow_resolution"
 name = "Shadow Resolution"
 description = "Resolution of the shadow map in texels."
@@ -1302,6 +1309,7 @@ name = "Shadows"
 description = "Shadow map quality, distance, variable penumbra, cloud shadows, contact shadows, and translucent tinting."
 items = [
     "shadows_enabled",
+    "engine_shadows",
     "shadow_resolution",
     "shadow_distance",
     "shadow_filter_quality",

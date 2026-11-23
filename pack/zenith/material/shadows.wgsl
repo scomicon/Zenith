@@ -262,3 +262,18 @@ fn mat_sample_shadows(
     let final_vis = mix(vec3<f32>(fallback), vis_rgb, shadow_fade) * cloud_vis;
     return ShadowResult(max(final_vis, vec3<f32>(0.0)), shadow_fade);
 }
+
+// Zenith Engine shadows: the Zenith Engine mod traces the sun's shadows through its own voxel copy
+// of the world within 120 blocks of the camera and multiplies them into the picture. Within that
+// range the pack lights a sunward surface as unshadowed, keeping only the cloud shadows the mod
+// doesn't cast, and its own shadows fade back in from 96 to 120 blocks, where the mod's fade out.
+// Surfaces facing away from the sun and those with no sky light are left as the pack shades them:
+// the mod skips both.
+fn mat_engine_shadows(s: ShadowResult, cam_pos: vec3<f32>, normal: vec3<f32>, light_dir: vec3<f32>, sky_light: f32) -> ShadowResult {
+    if !engine_shadows || frame.dimension != 0 || sky_light <= 0.0 || dot(normal, light_dir) <= 0.02 {
+        return s;
+    }
+    let near = 1.0 - smoothstep(96.0, 120.0, length(cam_pos));
+    let open = vec3<f32>(mat_cloud_shadow_vis(cam_pos, light_dir));
+    return ShadowResult(mix(s.sun_visibility, open, near), s.fade);
+}

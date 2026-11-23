@@ -2,6 +2,8 @@
 // Zenith Shader Pack — Entity & Block Entity Stage
 
 override shadows_enabled: bool = true;
+// The Zenith Engine mod casts the sun's shadows near the camera (see material/shadows.wgsl).
+override engine_shadows: bool = false;
 override shadow_softness: f32 = 1.35;
 override colored_shadows: bool = true;
 override cloud_shadows: bool = true;
@@ -232,7 +234,12 @@ fn entity(input: EntityInput) -> Surface {
     let shaded_albedo = ent_apply_overlay(raw_base * dir_shade * damp, input.overlay);
 
     // 1. Direct sun / moon + subtle GGX dielectric specular sheen
-    let shadow_vis = ent_sample_shadows(input.position, N, L, input.light.y, input.screen);
+    var shadow_vis = ent_sample_shadows(input.position, N, L, input.light.y, input.screen);
+    // Zenith Engine shadows (material/shadows.wgsl `mat_engine_shadows`): the mod shadows this range.
+    if engine_shadows && frame.dimension == 0 && input.light.y > 0.0 && dot(N, L) > 0.02 {
+        let near = 1.0 - smoothstep(96.0, 120.0, length(input.position));
+        shadow_vis = mix(shadow_vis, vec3<f32>(ent_cloud_shadow_vis(input.position, L)), near);
+    }
     let sun_rad = ent_sun_moon_radiance();
     let ndotl = max(dot(N, L), 0.0);
     let ndotv = max(dot(N, V), 1e-4);
