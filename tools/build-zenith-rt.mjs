@@ -28,12 +28,13 @@ function replaceOnce(file, from, to) {
 
 const manifest = 'horizon-shaders.toml';
 replaceOnce(manifest, 'id = "zenith"\nname = "Zenith"', 'id = "zenith_rt"\nname = "Zenith RT"');
-replaceOnce(manifest, '[frame]', '[ray_tracing]\n\n[frame]');
+replaceOnce(manifest, '[frame]', '[ray_tracing]\nlights = true\n\n[frame]');
 replaceOnce(manifest, 'description = "Physically-minded shader pack: shadows, GTAO, volumetric light, bloom, own sky and tone curve."',
   'description = "Zenith with hardware ray-traced reflections, directional shadows and two-bounce diffuse lighting."');
 replaceOnce(manifest, '    "material/water.wgsl",', `    "material/water.wgsl",
     "shared/ray_lighting.wgsl",
-    "material/ray_terrain.wgsl",`);
+    "material/ray_terrain.wgsl",
+    "material/ray_lights.wgsl",`);
 replaceOnce(manifest, '[[post]]\nfile = "post/gtao.wgsl"', `[[resource]]
 name = "zp_rt_bounce"
 format = "rgba16float"
@@ -185,6 +186,13 @@ replaceOnce(material, '        let glass_refl = mat_sky_reflection_color(refl_di
 replaceOnce(material, '                if refr.valid {\n                    var refr_col = refr.color;', `                if refr.valid {
                     let rt_behind = mat_rt_glass_refraction(input.position, V, n_delta, refr_uv, surf_z);
                     var refr_col = mix(refr.color, rt_behind.rgb, rt_behind.a);`);
+// Traced block lights (material/ray_lights.wgsl) take over vanilla's block light where the light grid reaches.
+const lighting = 'material/lighting.wgsl';
+replaceOnce(lighting, '    let bl_rad = block_tint * bl_curve * flicker;', `    let rt_block = mat_rt_block_light(input.position, geom_n, surf.normal, V, surf, input.light.x);
+    let bl_rad = block_tint * bl_curve * flicker * rt_block.vanilla_scale;`);
+replaceOnce(lighting, '    color += diffuse_light * (bl_rad * block_wrap + dyn_light * 0.85);', `    color += diffuse_light * (bl_rad * block_wrap + dyn_light * 0.85);
+    color += diffuse_light * rt_block.diffuse + rt_block.specular * surf.ao;`);
+
 const opticsSources = 'compute/optics_sources.wgsl';
 replaceOnce(opticsSources, 'if !surface.present || surface.data < 1.9 {',
   'if !surface.present || abs(surface.data - 2.0) > 0.1 {');
@@ -201,7 +209,7 @@ replaceOnce(volumes, '    // Under water the haze is thick:', `    let local = z
 replaceOnce(volumes, '    if (ray_len < 0.5) {\n        return vec4<f32>(0.0);', '    if (ray_len < 0.5) {\n        return vec4<f32>(local, 0.0);');
 replaceOnce(volumes, '    if !accumulate {\n        return vec4<f32>(rgb, 0.0);', '    if !accumulate || dot(local, local) > 1e-8 {\n        return vec4<f32>(rgb + local, 0.0);');
 
-for (const file of [shadows, 'material/water.wgsl', reflection, 'post/compose.wgsl', material, opticsSources, volumes]) {
+for (const file of [shadows, 'material/water.wgsl', reflection, 'post/compose.wgsl', material, opticsSources, volumes, lighting]) {
   const text = files.get(file);
   const firstLineEnd = text.indexOf('\n');
   files.set(file, text.slice(0, firstLineEnd) + '; Horizon Shader API 0.2 and Zenith RT integration.' + text.slice(firstLineEnd));
@@ -209,7 +217,7 @@ for (const file of [shadows, 'material/water.wgsl', reflection, 'post/compose.wg
 
 files.set('README.md', read(variant, 'README.md') + '\n---\n\n' + read(source, 'README.md'));
 const overlays = [
-  'shared/ray_lighting.wgsl', 'material/ray_terrain.wgsl', 'post/ray_reflection.wgsl',
+  'shared/ray_lighting.wgsl', 'material/ray_terrain.wgsl', 'material/ray_lights.wgsl', 'post/ray_reflection.wgsl',
   'compute/ray_bounce.wgsl', 'compute/ray_window_surface.wgsl', 'post/ray_bounce_filter.wgsl', 'post/ray_window_light.wgsl',
 ];
 for (const file of overlays) files.set(file, read(variant, file));

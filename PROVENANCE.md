@@ -324,3 +324,9 @@ Status: `ok` written from the sources, `rewritten` rewritten from sources, `pend
 |---|---|---|---|
 | `post/volumetric.wgsl` | The shafts' sun strength now divides by the 4 pi of the phase normalisation (it was left out, so the in-scattered sunlight was about 5x too bright and washed out terrain toward the sun) | Single scattering: L = sigma_s p E with p integrating to 1 over the sphere | `ZP_SUN_RADIANCE` 2.3 -> 0.46, so the default 0.6 looks like the former 0.1 |
 | `post/compose.wgsl` | Wider depth tolerance in the volumetric upsampling filter (relative 0.08-0.30), so a leaf and the canopy behind it share samples instead of single noisy taps that crawled while walking | | |
+
+### Zenith RT: traced block lights
+
+| File | Algorithm / change | Sources | Own choices |
+|---|---|---|---|
+| `variants/zenith-rt/material/ray_lights.wgsl`, `tools/build-zenith-rt.mjs` | Direct light from every listed light block (`[ray_tracing] lights = true`, `ray_lights_near`), Lambert and GGX, windowed inverse-square falloff, shadow rays across the source's body ending where they enter its block; replaces vanilla's block light term where the grid reaches | Horizon Shader API 0.2 (`ray_light*`, `packs/traced_lights` block-entry test); B. Karis, SIGGRAPH 2013 (windowed falloff, GGX); Whitted 1980 | Gain 0.86 with knee 5 blocks and range = level; light radius 0.16 block (0.42 for full cubes); 4 / 2 / 1 shadow rays under 5 / 9 / more blocks (8 near in Ultra); contributions under 0.002 luminance skipped; 24% of vanilla's light kept as bounce fill; vanilla residual for unlisted sources (lava); fade 48-60 blocks from the grid edge; untinted sources take the warm torch colour |
