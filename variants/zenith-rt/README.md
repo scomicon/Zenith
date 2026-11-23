@@ -14,4 +14,8 @@ Traced reflections jitter each ray inside a roughness cone (at least about two p
 
 **Water**: with ray tracing on, the refraction under the surface is traced instead of read from the screen. The refracted ray finds the floor or object under the water, lights it with its own sun shadow ray and the water's caustics, and the path length drives the Beer-Lambert absorption. Glowing blocks under water show through, and what is off screen is still found. Farther than about 56 blocks, or where the ray finds nothing in reach, the screen-space refraction takes over.
 
+**Glass and ice**: the reflection in a pane is traced, so a window mirrors the real blocks, entities and sky in front of it instead of the sky model alone. Where the screen-space refraction would sample something nearer than the pane (the frame around a window), the bent ray is traced instead. Both work in every RT mode and fade out beyond about 50 blocks.
+
+**Under the water surface**: Snell's window shows what lies above along the true refracted ray (shore, trees, the compressed sky), and outside the critical angle (48.6 degrees) the surface mirrors the floor and walls under the water by total internal reflection, with unpolarised Fresnel blending the two and Beer-Lambert absorption on both paths. Active when the camera is submerged within about 34-64 blocks of the surface point.
+
 GPU cost depends on the visible terrain, water and entities. The **Reflections** mode is the default. The options **Surface Reflections**, **Water Reflections** and **Shadows** govern their respective effects in all modes.

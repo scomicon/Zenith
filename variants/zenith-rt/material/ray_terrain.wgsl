@@ -117,3 +117,107 @@ fn mat_rt_water_refraction(p: vec3<f32>, geometric_normal: vec3<f32>, wave_norma
     out.weight = fade;
     return out;
 }
+
+// Glass and ice: the traced scene in the pane, where the sky model alone would show only the sky. Alpha is the
+// confidence of the trace; where it is 0 (a miss, or beyond the pane's reach) the sky reflection stays.
+fn mat_rt_glass_reflection(p: vec3<f32>, view: vec3<f32>, geometric_normal: vec3<f32>, reflected: vec3<f32>) -> vec4<f32> {
+    if frame.has_ray_tracing == 0u || frame.eye_in != 0u {
+        return vec4<f32>(0.0);
+    }
+    let fade = 1.0 - smoothstep(26.0, 50.0, length(p));
+    if fade <= 0.0 {
+        return vec4<f32>(0.0);
+    }
+    let facing = select(-geometric_normal, geometric_normal, dot(geometric_normal, view) >= 0.0);
+    if dot(reflected, facing) < 0.02 {
+        return vec4<f32>(0.0);
+    }
+    let hit = zn_rt_reflection(p + facing * 0.02, reflected, 56.0);
+    return vec4<f32>(hit.rgb, hit.a * fade);
+}
+
+// What lies behind glass along the bent ray, for the pixels where the screen-space tap lands on something nearer
+// than the pane (the frame around a window) and falls back to the unbent colour.
+fn mat_rt_glass_refraction(p: vec3<f32>, view: vec3<f32>, bend: vec3<f32>, refracted_uv: vec2<f32>, surface_z: f32) -> vec4<f32> {
+    if frame.has_ray_tracing == 0u || frame.eye_in != 0u {
+        return vec4<f32>(0.0);
+    }
+    let fade = 1.0 - smoothstep(24.0, 44.0, length(p));
+    if fade <= 0.0 {
+        return vec4<f32>(0.0);
+    }
+    let od_dims = vec2<i32>(textureDimensions(opaque_depth));
+    let tap_uv = clamp(refracted_uv, vec2<f32>(0.0005), vec2<f32>(0.9995));
+    let tap = clamp(vec2<i32>(tap_uv * vec2<f32>(od_dims)), vec2<i32>(0), max(od_dims - vec2<i32>(1), vec2<i32>(0)));
+    if textureLoad(opaque_depth, tap, 0) <= surface_z + 1e-5 {
+        return vec4<f32>(0.0);
+    }
+    let dir = normalize(-view + bend * 0.4);
+    let origin = p + dir * 0.03;
+    let reach = zn_rt_reach(origin, dir, 48.0);
+    if reach <= 0.3 {
+        return vec4<f32>(0.0);
+    }
+    let hit = trace_layers(origin, dir, reach, RAY_SOLID | RAY_ENTITY);
+    if hit.distance < 0.0 {
+        return vec4<f32>(0.0);
+    }
+    return vec4<f32>(zn_rt_reflected_radiance(hit, zn_rt_sun_visibility(hit)), fade);
+}
+
+// Looking up from under the surface: Snell's window shows what lies above along the refracted ray (shore, trees,
+// the true sky gradient), and past the critical angle the surface mirrors the floor and walls under the water.
+// Fresnel (unpolarised, water to air) blends the two. Alpha is the weight of the trace over the raster look.
+fn mat_rt_water_underside(
+    p: vec3<f32>, n: vec3<f32>, view: vec3<f32>, window_body: vec3<f32>, tir_body: vec3<f32>, sky_vis: f32,
+) -> vec4<f32> {
+    if frame.has_ray_tracing == 0u || frame.eye_in != 1u {
+        return vec4<f32>(0.0);
+    }
+    let distance = length(p);
+    let fade = 1.0 - smoothstep(34.0, 64.0, distance);
+    if fade <= 0.0 {
+        return vec4<f32>(0.0);
+    }
+    let travel = -view;
+    let cos_i = clamp(dot(n, view), 0.0, 1.0);
+    let refracted = refract(travel, n, 1.3333);
+    let transmits = dot(refracted, refracted) > 0.5;
+    var fresnel = 1.0;
+    if transmits {
+        let cos_t = clamp(-dot(n, refracted), 0.0, 1.0);
+        let rs = (1.3333 * cos_i - cos_t) / (1.3333 * cos_i + cos_t);
+        let rp = (cos_i - 1.3333 * cos_t) / (cos_i + 1.3333 * cos_t);
+        fresnel = clamp(0.5 * (rs * rs + rp * rp), 0.0, 1.0);
+    }
+    let sigma_up = vec3<f32>(0.12, 0.045, 0.03);
+    var through = tir_body;
+    if transmits && fresnel < 0.995 {
+        let origin = p - n * 0.03;
+        let sky = mat_sky_reflection_color(refracted) * sky_vis;
+        var air = sky;
+        let reach = zn_rt_reach(origin, refracted, 90.0);
+        if reach > 0.3 {
+            let hit = trace_layers(origin, refracted, reach, RAY_SOLID | RAY_ENTITY);
+            if hit.distance >= 0.0 {
+                air = mix(zn_rt_reflected_radiance(hit, zn_rt_sun_visibility(hit)), sky, smoothstep(40.0, 110.0, hit.distance));
+            }
+        }
+        let t_up = exp(-sigma_up * distance);
+        through = air * vec3<f32>(1.45, 1.68, 1.78) * t_up + window_body * (vec3<f32>(1.0) - t_up);
+    }
+    var mirror = tir_body;
+    if fresnel > 0.02 {
+        let down = reflect(travel, n);
+        let origin = p + n * 0.03;
+        let reach = zn_rt_reach(origin, down, 48.0);
+        if reach > 0.3 {
+            let hit = trace_layers(origin, down, reach, RAY_SOLID | RAY_ENTITY);
+            if hit.distance >= 0.0 {
+                let t_down = exp(-vec3<f32>(0.25, 0.09, 0.05) * (distance + hit.distance));
+                mirror = zn_rt_reflected_radiance(hit, zn_rt_sun_visibility(hit)) * t_down + tir_body * (vec3<f32>(1.0) - t_down);
+            }
+        }
+    }
+    return vec4<f32>(mix(through, mirror, fresnel), fade);
+}

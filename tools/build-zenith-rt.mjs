@@ -134,6 +134,14 @@ replaceOnce('material/water.wgsl', '            let refr_trans = exp(-sigma * mi
             let refr_trans = exp(-sigma * min(rt_path, 28.0));
             let transmitted = mix(refr.color, rt_refraction.color, rt_refraction.weight) * refr_trans;`);
 
+replaceOnce('material/water.wgsl', '    let lit = mix(tir_color, window_color, window_t);', '    var lit = mix(tir_color, window_color, window_t);');
+replaceOnce('material/water.wgsl', '    let final_alpha = mat_water_underside_alpha(ndotv, has_bg, water_depth, depth_opacity);', '    var final_alpha = mat_water_underside_alpha(ndotv, has_bg, water_depth, depth_opacity);');
+replaceOnce('material/water.wgsl', '    return Surface(vec4<f32>(max(lit, vec3<f32>(0.0)), final_alpha));\n}', `    let rt_under = mat_rt_water_underside(input.position, N, V, window_body, tir_color, sky_vis);
+    lit = mix(lit, rt_under.rgb, rt_under.a);
+    final_alpha = mix(final_alpha, max(final_alpha, 0.96), rt_under.a);
+    return Surface(vec4<f32>(max(lit, vec3<f32>(0.0)), final_alpha));
+}`);
+
 const reflection = 'post/ssr.wgsl';
 replaceOnce(reflection, '    let R = reflect(V_dir, N);', `    let R = reflect(V_dir, N);
     let ndotv = max(dot(N, -V_dir), 0.0);
@@ -171,6 +179,12 @@ const material = 'material/material.wgsl';
 replaceOnce(material, '        } else if is_reactive {', `        } else if !is_reactive && input.emission >= 0.66 {
             surface_data = 3.0 + input.emission; // Nearby block emitters for the window-light probe.
         } else if is_reactive {`);
+replaceOnce(material, '        let glass_refl = mat_sky_reflection_color(refl_dir) * sky_vis;', `        var glass_refl = mat_sky_reflection_color(refl_dir) * sky_vis;
+        let rt_glass = mat_rt_glass_reflection(input.position, V, geom_n, refl_dir);
+        glass_refl = mix(glass_refl, rt_glass.rgb, rt_glass.a);`);
+replaceOnce(material, '                if refr.valid {\n                    var refr_col = refr.color;', `                if refr.valid {
+                    let rt_behind = mat_rt_glass_refraction(input.position, V, n_delta, refr_uv, surf_z);
+                    var refr_col = mix(refr.color, rt_behind.rgb, rt_behind.a);`);
 const opticsSources = 'compute/optics_sources.wgsl';
 replaceOnce(opticsSources, 'if !surface.present || surface.data < 1.9 {',
   'if !surface.present || abs(surface.data - 2.0) > 0.1 {');
