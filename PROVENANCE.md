@@ -317,3 +317,10 @@ Status: `ok` written from the sources, `rewritten` rewritten from sources, `pend
 | `post/volumetric.wgsl` | Sky pixels above the horizon keep only 35% of the near-haze shafts and no unshadowed tail (the sky model already scatters the sun in its own haze, so the glow was counted twice); the void below the horizon blends into it over 0.12 of elevation | | Mie phase peak capped at 6 (was 14) |
 | `shared/fog.wgsl` | Softer forward lobe (g 0.65), shorter morning fog window (ends by day time 0.07), ground-fog morning factor 0.70 | | |
 | `post/compose.wgsl` | Where no low-resolution volumetric sample matches a pixel's depth (a leaf against a gap), take the closest tap in depth instead of zero haze: the zero left dark dots that flickered on foliage while walking | | |
+
+### Sun shafts brightness and foliage stability
+
+| File | Algorithm / change | Sources | Own choices |
+|---|---|---|---|
+| `post/volumetric.wgsl` | The shafts' sun strength now divides by the 4 pi of the phase normalisation (it was left out, so the in-scattered sunlight was about 5x too bright and washed out terrain toward the sun) | Single scattering: L = sigma_s p E with p integrating to 1 over the sphere | `ZP_SUN_RADIANCE` 2.3 -> 0.46, so the default 0.6 looks like the former 0.1 |
+| `post/compose.wgsl` | Wider depth tolerance in the volumetric upsampling filter (relative 0.08-0.30), so a leaf and the canopy behind it share samples instead of single noisy taps that crawled while walking | | |

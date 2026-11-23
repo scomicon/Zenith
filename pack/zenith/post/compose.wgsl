@@ -333,7 +333,9 @@ fn zp_light_filtered(uv: vec2<f32>, depth: f32) -> vec3<f32> {
                 // Own choice: relative reversed-depth tolerance; no view-space
                 // reconstruction needed for the 16 filter taps.
                 let difference = abs(tap_depth - depth) / max(depth, 1e-6);
-                range_weight = 1.0 - smoothstep(0.05, 0.15, difference);
+                // Wide enough that a leaf and the canopy right behind it share samples: a tight test left single
+                // noisy taps on foliage, which crawled as the camera moved.
+                range_weight = 1.0 - smoothstep(0.08, 0.30, difference);
             }
             let offset = vec2<f32>(f32(x - 1), f32(y - 1));
             let tent = max(vec2<f32>(0.0), vec2<f32>(1.0) - abs(offset - f) * 0.5);
