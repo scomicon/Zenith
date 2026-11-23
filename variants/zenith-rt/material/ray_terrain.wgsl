@@ -1,17 +1,29 @@
 // src: Turner Whitted, An Improved Illumination Model for Shaded Display, CACM 1980 (secondary illumination and visibility); Horizon Shader API 0.2 (material ray calls, scene layers).
 
+// Where traced shadows end, by quality mode (blocks from the camera): they hand over to the shadow map across the
+// last 40% of the range. The scene reaches `frame.ray_distance` along x and z, so the range stays 10 blocks inside it.
+const ZN_RT_SHADOW_END: vec4<f32> = vec4<f32>(52.0, 64.0, 88.0, 120.0);
+
+fn mat_rt_shadow_end() -> f32 {
+    return min(ZN_RT_SHADOW_END[min(quality_mode, 3u)], max(frame.ray_distance - 10.0, 24.0));
+}
+
 fn mat_rt_shadow_weight(p: vec3<f32>, light_dir: vec3<f32>) -> f32 {
     if frame.has_ray_tracing == 0u || rt_lighting < 1u || frame.eye_in != 0u || light_dir.y < 0.06 {
         return 0.0;
     }
+    let end = mat_rt_shadow_end();
+    // The sun ray must stay in the scene long enough to meet the occluders that matter (trees, hills): 30-60 blocks.
     let reach = zn_rt_reach(p, light_dir, 100.0);
-    return (1.0 - smoothstep(26.0, 52.0, length(p))) * smoothstep(46.0, 76.0, reach);
+    return (1.0 - smoothstep(end * 0.6, end, length(p))) * smoothstep(30.0, 60.0, reach);
 }
 
 // Tangent of the light's angular radius for the soft shadow cone. The real sun is 0.0047; this is deliberately
 // wider (about 1.5 degrees), the way a sky-lit scene looks: penumbrae grow with the distance to the occluder.
 const ZN_RT_SUN_RADIUS: f32 = 0.026;
 const ZN_RT_PENUMBRA_RAYS: i32 = 16;
+const ZN_RT_FAR_RIM: f32 = 40.0;     // blocks: past this, the five rays without the penumbra pass
+const ZN_RT_FAR_SINGLE: f32 = 64.0;  // blocks: past this, one ray
 override quality_mode: u32 = 1u; // Ultra (3) doubles the penumbra rays.
 
 // True when a ray toward the light is stopped by solid terrain or an entity (or points into the surface).
@@ -35,23 +47,32 @@ fn mat_rt_shadow(p: vec3<f32>, normal: vec3<f32>, light_dir: vec3<f32>) -> vec3<
         let world = (p + frame.camera_position) * 11.0;
         let spin = fract(sin(dot(floor(world), vec3<f32>(12.9898, 78.233, 37.719))) * 43758.5453) * 6.2831853;
         var blocked = select(0.0, 1.0, mat_rt_blocked(origin, light_dir, reach, normal));
-        for (var k = 0; k < 4; k++) {
-            let a = spin + f32(k) * 1.5707963;
-            let dir = normalize(light_dir + (t * cos(a) + b * sin(a)) * ZN_RT_SUN_RADIUS);
-            blocked += select(0.0, 1.0, mat_rt_blocked(origin, dir, reach, normal));
-        }
-        if blocked > 0.5 && blocked < 4.5 {
-            var extra = 0.0;
-            let penumbra_rays = select(ZN_RT_PENUMBRA_RAYS, ZN_RT_PENUMBRA_RAYS * 2, quality_mode >= 3u);
-            for (var i = 0; i < penumbra_rays; i++) {
-                let r = sqrt((f32(i) + 0.5) / f32(penumbra_rays)) * ZN_RT_SUN_RADIUS;
-                let a = spin + 0.7 + f32(i) * 2.39996323;
-                let dir = normalize(light_dir + (t * cos(a) + b * sin(a)) * r);
-                extra += select(0.0, 1.0, mat_rt_blocked(origin, dir, reach, normal));
-            }
-            visibility = 1.0 - (blocked + extra) / (5.0 + f32(penumbra_rays));
+        let distance = length(p);
+        if distance >= ZN_RT_FAR_SINGLE {
+            // Far away a penumbra is under a pixel: one ray to the centre of the disc.
+            visibility = 1.0 - blocked;
         } else {
-            visibility = select(1.0, 0.0, blocked > 2.5);
+            for (var k = 0; k < 4; k++) {
+                let a = spin + f32(k) * 1.5707963;
+                let dir = normalize(light_dir + (t * cos(a) + b * sin(a)) * ZN_RT_SUN_RADIUS);
+                blocked += select(0.0, 1.0, mat_rt_blocked(origin, dir, reach, normal));
+            }
+            if distance >= ZN_RT_FAR_RIM {
+                // Middle distance: the five rays alone, averaged.
+                visibility = 1.0 - blocked / 5.0;
+            } else if blocked > 0.5 && blocked < 4.5 {
+                var extra = 0.0;
+                let penumbra_rays = select(ZN_RT_PENUMBRA_RAYS, ZN_RT_PENUMBRA_RAYS * 2, quality_mode >= 3u);
+                for (var i = 0; i < penumbra_rays; i++) {
+                    let r = sqrt((f32(i) + 0.5) / f32(penumbra_rays)) * ZN_RT_SUN_RADIUS;
+                    let a = spin + 0.7 + f32(i) * 2.39996323;
+                    let dir = normalize(light_dir + (t * cos(a) + b * sin(a)) * r);
+                    extra += select(0.0, 1.0, mat_rt_blocked(origin, dir, reach, normal));
+                }
+                visibility = 1.0 - (blocked + extra) / (5.0 + f32(penumbra_rays));
+            } else {
+                visibility = select(1.0, 0.0, blocked > 2.5);
+            }
         }
     }
     if visibility <= 0.0 {

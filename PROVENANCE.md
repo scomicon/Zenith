@@ -342,3 +342,9 @@ Status: `ok` written from the sources, `rewritten` rewritten from sources, `pend
 | File | Algorithm / change | Sources | Own choices |
 |---|---|---|---|
 | `variants/zenith-rt/compute/ray_bounce.wgsl`, `variants/zenith-rt/material/ray_sky.wgsl`, `variants/zenith-rt/post/ray_bounce_filter.wgsl`, `tools/build-zenith-rt.mjs` | Cosine-distributed visibility rays to the sky, accumulated over frames into a third band of `zp_rt_bounce` (480x811); the material pass reads last frame's band at the point's previous screen position (depth-checked bilinear) and scales the hemisphere ambient and the environment reflection by it | M. Landis, SIGGRAPH 2002 course (ambient occlusion as visible sky); Kajiya 1986; Tomasi and Manduchi 1998 | 4 rays (8 in Ultra), range 40 blocks, rays below 0.05 elevation counted open (the ambient's ground half), fill 0.22, fade 30-56 blocks; GTAO strength halved within 30 blocks in RT; the former Full RT sky term (which only ever added light) is removed, Full RT keeps the diffuse bounce |
+
+### Zenith RT: longer traced shadow range
+
+| File | Algorithm / change | Sources | Own choices |
+|---|---|---|---|
+| `variants/zenith-rt/material/ray_terrain.wgsl` | Traced sun shadows reach 52 / 64 / 88 / 120 blocks by `quality_mode` (was 26-52 for all), kept 10 blocks inside `frame.ray_distance`, with the shadow map taking over across the last 40%; the sun ray must stay 30-60 blocks in the scene; ray count tiered by distance (full penumbra under 40 blocks, 5 averaged rays to 64, one ray beyond) | Fernando, PCSS, GDC 2005 (penumbra from blocker distance) | Without the tiers the longer range cost 39 -> 100 ms in Ultra over a forest on an RX 7600; with them it measured the same as before (39.5 ms) |
