@@ -2,6 +2,23 @@
 
 A clean-room MIT-licensed shader pack and optional hardware ray-tracing variant (`Zenith RT`) for [Horizon](https://github.com/horizon-rust/horizon) (**final Shader API `0.2`**, `schema = 1`, Horizon `nightly-2026-11-21` / `8f83e5c` or compatible newer builds).
 
+## Screenshots
+
+Zenith (not RT) on its highest settings: **Quality mode Ultra**, **Color Mood Cinematic**, 8192 shadows at 512 blocks with High filtering, temporal light, AO and reflections, morphological AA, 32 displacement cells; Horizon at 200% resolution scale, 32-chunk render distance and 256-chunk far terrain. Taken on 2026-11-24 with `nightly-2026-11-22-f1bb66f`, 1920×1080, HUD hidden, no post-editing.
+
+| | |
+|---|---|
+| ![Misty sunrise over a river valley](screenshots/01-misty-sunrise.jpg) | ![Light shafts through a mountain forest at sunset](screenshots/02-golden-forest.jpg) |
+| Misty sunrise over a river valley | Light shafts through a mountain forest at sunset |
+| ![Dawn above a sea of clouds from the frozen peaks](screenshots/03-above-the-clouds.jpg) | ![Cherry grove at golden hour](screenshots/04-cherry-grove.jpg) |
+| Dawn above a sea of clouds from the frozen peaks | Cherry grove at golden hour |
+| ![Sunset over a jungle and a desert](screenshots/05-jungle-desert-sunset.jpg) | ![Sunset over the open ocean](screenshots/06-ocean-sunset.jpg) |
+| Sunset over a jungle and a desert | Sunset over the open ocean |
+| ![Morning over a mangrove swamp](screenshots/07-mangrove-morning.jpg) | ![Thunderstorm on the shore](screenshots/08-thunderstorm.jpg) |
+| Morning over a mangrove swamp | Thunderstorm on the shore |
+| ![Starry night above misty valleys](screenshots/09-starry-night.jpg) | ![The End's cosmic sky and rift](screenshots/10-the-end.jpg) |
+| Starry night above misty valleys | The End's cosmic sky and rift |
+
 ## Variants
 
 - **`pack/zenith` — Zenith:** Rasterized PBR shader pack with PCSS shadows, translucent colored shadows and glass/ice refraction, dispersive optical water caustics, 4-swell water waves with planar/sky reflections, sky-view LUT atmosphere, volumetric rain/snowstorms, powder-snow immersion, pure 3D domain-warped volumetric dawn mist, multi-bounce GTAO, screen-space reflections, bloom pyramid, AgX-inspired HDR tone mapping, histogram auto-exposure, FXAA / morphological AA, cinematic optics, and cosmic End & volcanic Nether skies.
