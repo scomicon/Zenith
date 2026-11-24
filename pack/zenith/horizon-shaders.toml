@@ -1178,7 +1178,7 @@ default = true
 [[options]]
 id = "water_reflections"
 name = "Water Mirror Reflections"
-description = "Reflect terrain and sky on water surfaces using Horizon's planar mirror."
+description = "Reflect terrain and sky on water surfaces using Horizon's planar mirror (in Zenith RT also traced rays). Turn it off to let the Zenith Engine mod reflect the water instead."
 type = "bool"
 default = true
 
