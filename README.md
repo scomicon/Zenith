@@ -27,23 +27,58 @@ Zenith (not RT) on its highest settings: **Quality mode Ultra**, **Color Mood Ci
   - **Reflections + Shadows:** Near-field ray-traced sun/moon shadows plus persistent world-space stained-glass emitter lighting on both air shafts and solid receivers.
   - **Full RT:** Two-bounce diffuse global illumination evaluated at quarter resolution (`480×270`) and bilaterally upsampled with scene depth and normals.
 
-## Quick Start (Zenith)
+## Installation (Recommended)
 
-1. Copy the [`pack/zenith`](pack/zenith) directory to your Horizon shaderpacks folder:
-   - **Windows:** `%APPDATA%\horizon\shaderpacks\zenith`
-   - **Linux:** `~/.local/share/horizon/shaderpacks/zenith`
-2. Ensure `horizon-shaders.toml` sits directly inside that `zenith/` directory.
-3. Launch Horizon, open **Shader Packs**, and select **Zenith**.
+### 1. One-Line Quick Install
 
-## Building Zenith RT
+Installs **Zenith RT** directly into Horizon's `shaderpacks/` folder, verifies the SHA-256 checksum, and moves any conflicting older packs or accidentally unpacked repository folders to a backup directory.
 
-`Zenith RT` is generated deterministically from `pack/zenith` and `variants/zenith-rt`:
+- **Windows (PowerShell):**
+
+```powershell
+irm https://raw.githubusercontent.com/scomicon/Zenith/main/tools/install-zenith-rt.ps1 | iex
+```
+
+To install both **Zenith** and **Zenith RT** (or target a specific launcher instance):
+
+```powershell
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/scomicon/Zenith/main/tools/install-zenith-rt.ps1))) -Pack both
+```
+
+- **Linux / macOS:**
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/scomicon/Zenith/main/tools/install-zenith-rt.sh | sh
+```
+
+To install both packs on Linux / macOS:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/scomicon/Zenith/main/tools/install-zenith-rt.sh | sh -s -- --pack both
+```
+
+If you downloaded or cloned this repository locally, you can also run [`tools/install-zenith-rt.ps1`](tools/install-zenith-rt.ps1) (or `powershell -ExecutionPolicy Bypass -File tools\install-zenith-rt.ps1 -Local`) or [`tools/install-zenith-rt.sh`](tools/install-zenith-rt.sh).
+
+### 2. Manual `.hshader` Download (No Scripts)
+
+1. Download `zenith_rt-<version>.hshader` (and/or `zenith-<version>.hshader`) from [GitHub Releases](https://github.com/scomicon/Zenith/releases/latest).
+2. Place the `.hshader` file directly into your Horizon `shaderpacks/` folder — do **not** extract `.hshader` and do **not** unpack the source repository ZIP into `shaderpacks/`:
+   - **Windows:** `%APPDATA%\horizon\shaderpacks`
+   - **Linux:** `~/.local/share/horizon/shaderpacks`
+   - **macOS:** `~/Library/Application Support/horizon/shaderpacks`
+3. Launch Horizon, open **Shader Packs**, and select **Zenith RT** (or **Zenith**).
+4. **Important for Zenith RT:** after selecting **Zenith RT**, **restart Horizon** so the client initializes hardware ray queries on supported GPUs. Choose the RT tier under **Effects → Ray Tracing** (`Reflections`, `Reflections + Shadows`, or `Full RT`).
+
+## Building from Source (Developers)
+
+- **Zenith (raster):** copy [`pack/zenith`](pack/zenith) directly into `shaderpacks/zenith` (so `horizon-shaders.toml` sits immediately inside `zenith/`).
+- **Zenith RT:** generated deterministically from `pack/zenith` and `variants/zenith-rt` (requires Node.js):
 
 ```sh
 node tools/build-zenith-rt.mjs outputs/zenith-rt/zenith_rt
 ```
 
-Copy the generated `outputs/zenith-rt/zenith_rt` folder into your Horizon `shaderpacks/` directory as `zenith_rt/`, select **Zenith RT** in-game, and restart the client so Horizon enables hardware ray queries on supported GPUs. Choose the RT tier under **Effects → Ray Tracing** (`Reflections`, `Reflections + Shadows`, or `Full RT`).
+Copy the generated `outputs/zenith-rt/zenith_rt` folder into your Horizon `shaderpacks/` directory as `zenith_rt/`, select **Zenith RT** in-game, and restart the client.
 
 ## Validation
 
@@ -61,11 +96,13 @@ Note that Horizon requires a pack directory to contain **only** files declared i
 
 ```text
 .
-├── LICENSE                  # MIT License
-├── PROVENANCE.md            # Algorithm attributions & clean-room design notes
-├── pack/zenith/             # Zenith shader pack (WGSL stages and manifest)
-├── variants/zenith-rt/      # Zenith RT hardware ray-query overlay sources & docs
-└── tools/build-zenith-rt.mjs # Builds standalone zenith_rt from pack/zenith + overlay
+├── LICENSE                    # MIT License
+├── PROVENANCE.md              # Algorithm attributions & clean-room design notes
+├── pack/zenith/               # Zenith shader pack (WGSL stages and manifest)
+├── variants/zenith-rt/        # Zenith RT hardware ray-query overlay sources & docs
+├── tools/build-zenith-rt.mjs  # Builds standalone zenith_rt from pack/zenith + overlay
+├── tools/install-zenith-rt.ps1 # Windows one-line / local quick installer
+└── tools/install-zenith-rt.sh  # Linux / macOS one-line / local quick installer
 ```
 
 ## License
