@@ -6,10 +6,16 @@ const ZN_RT_WINDOW_SOURCES: u32 = 8u;
 const ZN_RT_WINDOW_VOLUME_REACH: f32 = 7.0;
 const ZN_RT_WINDOW_SURFACE_REACH: f32 = 11.0;
 
+// Coloured glass only, by saturation (spread over the brightest channel): vanilla's clear glass
+// streaks reach 0.11-0.33, the palest coloured glass (pink) 0.48, white, light grey, grey and
+// black stained glass 0. Clear glass passing as a coloured window projected its frame texture
+// into the air as large ghost copies of the pane around a lamp behind it.
 fn zn_rt_stained_glass(hit: RayHit) -> bool {
     let rgb = hit.albedo.rgb;
-    let spread = max(max(rgb.r, rgb.g), rgb.b) - min(min(rgb.r, rgb.g), rgb.b);
-    return hit.distance >= 0.0 && hit.translucent && (hit.tags & 1u) != 0u && spread >= 0.035;
+    let peak = max(max(rgb.r, rgb.g), rgb.b);
+    let spread = peak - min(min(rgb.r, rgb.g), rgb.b);
+    return hit.distance >= 0.0 && hit.translucent && (hit.tags & 1u) != 0u && spread >= 0.035
+        && spread >= 0.40 * peak;
 }
 
 // The scene is guaranteed inside a square around the camera in world XZ.
