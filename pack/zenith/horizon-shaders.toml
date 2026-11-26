@@ -5,7 +5,7 @@
 schema = 1
 id = "zenith"
 name = "Zenith"
-version = "0.2.0"
+version = "0.2.1"
 api = "0.2"
 description = "Physically-minded shader pack: shadows, GTAO, volumetric light, bloom, own sky and tone curve."
 license = "MIT"
